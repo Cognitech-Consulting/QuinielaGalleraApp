@@ -49,24 +49,53 @@ const PredictionsScreen = ({ route, navigation }) => {
     const totalPeleas = getTotalPeleas();
     const predictionsCount = getPredictionsCount();
 
+    if (predictionsCount === 0) {
+      Alert.alert(
+        'Sin Predicciones',
+        'Debes hacer al menos una predicción antes de enviar.'
+      );
+      return;
+    }
+
     if (predictionsCount < totalPeleas) {
       Alert.alert(
         'Predicciones Incompletas',
-        `Has completado ${predictionsCount} de ${totalPeleas} predicciones. ¿Deseas enviar las predicciones incompletas?`,
+        `Has completado ${predictionsCount} de ${totalPeleas} predicciones.\n\n¿Deseas enviar tus predicciones ahora? Podrás agregar más predicciones después si lo deseas.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Enviar Ahora', onPress: submitUserPredictions },
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Confirmar Envío',
+        `¿Deseas enviar tus ${predictionsCount} predicciones?`,
         [
           { text: 'Cancelar', style: 'cancel' },
           { text: 'Enviar', onPress: submitUserPredictions },
         ]
       );
-    } else {
-      submitUserPredictions();
     }
   };
 
   const submitUserPredictions = async () => {
     try {
       setLoading(true);
-      const result = await submitPredictions(user.user_id, predictions);
+      
+      // Convert predictions object to array format expected by backend
+      const predictionsArray = Object.entries(predictions).map(([peleaId, choice]) => ({
+        pelea_id: parseInt(peleaId),
+        prediccion: choice
+      }));
+      
+      console.log('Submitting predictions:', {
+        user_id: user.user_id,
+        event_id: event.id,
+        predictions: predictionsArray
+      });
+      
+      // Include event_id in the submission
+      const result = await submitPredictions(user.user_id, event.id, predictionsArray);
       
       Alert.alert(
         '¡Éxito!',
@@ -77,13 +106,25 @@ const PredictionsScreen = ({ route, navigation }) => {
             onPress: () => navigation.navigate('Results'),
           },
           {
-            text: 'OK',
+            text: 'Volver al Inicio',
             onPress: () => navigation.navigate('Home'),
           },
         ]
       );
     } catch (error) {
-      Alert.alert('Error', error.error || 'No se pudieron enviar las predicciones');
+      console.error('Submit predictions error:', error);
+      
+      // Handle different error formats
+      let errorMessage = 'No se pudieron enviar las predicciones';
+      if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error.error) {
+        errorMessage = error.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }

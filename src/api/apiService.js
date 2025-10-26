@@ -125,14 +125,21 @@ export const checkParticipation = async (user_id, event_id) => {
 
 // ==================== PREDICTION APIs ====================
 
-export const submitPredictions = async (user_id, predictions) => {
+export const submitPredictions = async (user_id, event_id, predictions) => {
   try {
-    const response = await api.post('/eventos/api/submit-predictions/', {
+    // Format the payload to match backend expectations
+    const payload = {
       user_id,
-      predictions,
-    });
+      event_id,
+      predictions // This should be an array of { pelea_id, prediccion }
+    };
+    
+    console.log('Submitting predictions:', JSON.stringify(payload, null, 2));
+    
+    const response = await api.post('/eventos/api/submit-predictions/', payload);
     return response.data;
   } catch (error) {
+    console.error('Submit predictions error:', error.response?.data || error.message);
     throw error.response?.data || error.message;
   }
 };
