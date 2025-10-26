@@ -1,4 +1,4 @@
-// src/screens/PredictionsScreen.js
+// src/screens/PredictionsScreen.js - PREMIUM BRANDED VERSION
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -19,7 +19,6 @@ const PredictionsScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Set up polling for real-time event updates
     const stopPolling = pollCurrentEvent((data, error) => {
       if (data) {
         setEvent(data);
@@ -70,7 +69,7 @@ const PredictionsScreen = ({ route, navigation }) => {
       const result = await submitPredictions(user.user_id, predictions);
       
       Alert.alert(
-        'Éxito',
+        '¡Éxito!',
         `Predicciones enviadas correctamente!\nPuntos actuales: ${result.total_points || 0}`,
         [
           {
@@ -98,26 +97,49 @@ const PredictionsScreen = ({ route, navigation }) => {
     );
   }
 
+  const progress = getTotalPeleas() > 0 ? getPredictionsCount() / getTotalPeleas() : 0;
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{event.nombre}</Text>
-        <Text style={styles.headerSubtitle}>
-          {getPredictionsCount()} / {getTotalPeleas()} Predicciones
-        </Text>
+        <View style={styles.progressContainer}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+          </View>
+          <Text style={styles.progressText}>
+            {getPredictionsCount()} / {getTotalPeleas()} Predicciones
+          </Text>
+        </View>
       </View>
 
       {/* Rounds and Fights */}
-      <ScrollView style={styles.scrollView}>
-        {event.rondas?.map((ronda) => (
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {event.rondas?.map((ronda, rondaIndex) => (
           <View key={ronda.id} style={styles.roundCard}>
-            <Text style={styles.roundTitle}>Ronda {ronda.numero}</Text>
+            <View style={styles.roundHeader}>
+              <Text style={styles.roundTitle}>Ronda {ronda.numero}</Text>
+              <View style={styles.roundBadge}>
+                <Text style={styles.roundBadgeText}>
+                  {ronda.peleas?.filter(p => predictions[p.id]).length || 0}/{ronda.peleas?.length || 0}
+                </Text>
+              </View>
+            </View>
             
-            {ronda.peleas?.map((pelea) => (
+            {ronda.peleas?.map((pelea, peleaIndex) => (
               <View key={pelea.id} style={styles.fightCard}>
+                <View style={styles.fightHeader}>
+                  <Text style={styles.fightNumber}>Pelea #{peleaIndex + 1}</Text>
+                  {predictions[pelea.id] && (
+                    <View style={styles.completedBadge}>
+                      <Text style={styles.completedBadgeText}>✓</Text>
+                    </View>
+                  )}
+                </View>
+                
                 <Text style={styles.fightTitle}>
-                  {pelea.equipo1} vs {pelea.equipo2}
+                  {pelea.equipo1} <Text style={styles.vs}>VS</Text> {pelea.equipo2}
                 </Text>
                 
                 <View style={styles.choicesContainer}>
@@ -127,6 +149,7 @@ const PredictionsScreen = ({ route, navigation }) => {
                       predictions[pelea.id] === 'equipo1' && styles.choiceButtonSelected,
                     ]}
                     onPress={() => handlePrediction(pelea.id, 'equipo1')}
+                    activeOpacity={0.7}
                   >
                     <Text
                       style={[
@@ -142,9 +165,10 @@ const PredictionsScreen = ({ route, navigation }) => {
                     style={[
                       styles.choiceButton,
                       styles.choiceButtonTie,
-                      predictions[pelea.id] === 'empate' && styles.choiceButtonSelected,
+                      predictions[pelea.id] === 'empate' && styles.choiceButtonSelectedTie,
                     ]}
                     onPress={() => handlePrediction(pelea.id, 'empate')}
+                    activeOpacity={0.7}
                   >
                     <Text
                       style={[
@@ -162,6 +186,7 @@ const PredictionsScreen = ({ route, navigation }) => {
                       predictions[pelea.id] === 'equipo2' && styles.choiceButtonSelected,
                     ]}
                     onPress={() => handlePrediction(pelea.id, 'equipo2')}
+                    activeOpacity={0.7}
                   >
                     <Text
                       style={[
@@ -174,21 +199,13 @@ const PredictionsScreen = ({ route, navigation }) => {
                   </TouchableOpacity>
                 </View>
 
-                {/* Show result if available */}
-                {pelea.resultado && (
-                  <View style={styles.resultContainer}>
-                    <Text style={styles.resultLabel}>Resultado: </Text>
-                    <Text style={styles.resultText}>
-                      {pelea.resultado === 'equipo1' && pelea.equipo1}
-                      {pelea.resultado === 'equipo2' && pelea.equipo2}
-                      {pelea.resultado === 'tie' && 'Empate'}
-                    </Text>
-                  </View>
-                )}
+                {/* Results are HIDDEN on predictions screen - users should NOT see who won! */}
               </View>
             ))}
           </View>
         ))}
+
+        <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* Submit Button */}
@@ -197,6 +214,7 @@ const PredictionsScreen = ({ route, navigation }) => {
           style={[styles.submitButton, loading && styles.buttonDisabled]}
           onPress={handleSubmit}
           disabled={loading}
+          activeOpacity={0.8}
         >
           {loading ? (
             <ActivityIndicator color="#FFF" />
@@ -223,51 +241,125 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#D52B1E',
-    padding: 20,
-    paddingTop: 40,
+    paddingTop: 60,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FFF',
+    marginBottom: 15,
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#FFF',
-    marginTop: 5,
+  progressContainer: {
+    marginTop: 10,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#FFC107',
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
   },
   scrollView: {
     flex: 1,
   },
   roundCard: {
     backgroundColor: '#FFF',
-    margin: 10,
-    borderRadius: 8,
+    margin: 15,
+    marginTop: 20,
+    borderRadius: 15,
     padding: 15,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  roundHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+    paddingBottom: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: '#F5F5F5',
   },
   roundTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#D52B1E',
-    marginBottom: 15,
+  },
+  roundBadge: {
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  roundBadgeText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#666',
   },
   fightCard: {
     backgroundColor: '#F9F9F9',
     padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#D52B1E',
+  },
+  fightHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  fightNumber: {
+    fontSize: 12,
+    color: '#999',
+    fontWeight: '600',
+  },
+  completedBadge: {
+    backgroundColor: '#2ECC71',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  completedBadgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   fightTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
+    color: '#1a1a1a',
+    marginBottom: 12,
     textAlign: 'center',
+  },
+  vs: {
+    color: '#D52B1E',
+    fontSize: 14,
   },
   choicesContainer: {
     flexDirection: 'row',
@@ -278,10 +370,15 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 12,
     backgroundColor: '#FFF',
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#DDD',
+    borderColor: '#E0E0E0',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   choiceButtonTie: {
     flex: 0.6,
@@ -289,6 +386,18 @@ const styles = StyleSheet.create({
   choiceButtonSelected: {
     backgroundColor: '#D52B1E',
     borderColor: '#D52B1E',
+    shadowColor: '#D52B1E',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  choiceButtonSelectedTie: {
+    backgroundColor: '#FFC107',
+    borderColor: '#FFC107',
+    shadowColor: '#FFC107',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   choiceText: {
     fontSize: 12,
@@ -299,42 +408,37 @@ const styles = StyleSheet.create({
   choiceTextSelected: {
     color: '#FFF',
   },
-  resultContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 10,
-    padding: 8,
-    backgroundColor: '#E8F5E9',
-    borderRadius: 4,
-  },
-  resultLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  resultText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2ECC71',
-  },
   footer: {
     padding: 15,
     backgroundColor: '#FFF',
     borderTopWidth: 1,
-    borderTopColor: '#DDD',
+    borderTopColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 8,
   },
   submitButton: {
     backgroundColor: '#2ECC71',
-    padding: 15,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
+    shadowColor: '#2ECC71',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
   },
   buttonDisabled: {
     backgroundColor: '#999',
+    opacity: 0.6,
   },
   submitButtonText: {
     color: '#FFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
 });
 

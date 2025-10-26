@@ -1,4 +1,4 @@
-// src/screens/RankingsScreen.js
+// src/screens/RankingsScreen.js - PREMIUM BRANDED VERSION
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -34,14 +34,12 @@ const RankingsScreen = () => {
 
       setEventId(activeEventId);
 
-      // Set up polling for rankings (every 30 seconds)
       const stopPolling = pollRankings(activeEventId, (data, err) => {
         if (data) {
           setRankings(data.rankings || []);
           setError(null);
           setLoading(false);
         } else if (err) {
-          // Check if it's a 403 error (ranking hidden)
           if (err.error === 'Ranking is currently hidden.') {
             setError('hidden');
           } else {
@@ -51,7 +49,6 @@ const RankingsScreen = () => {
         }
       }, 30000);
 
-      // Cleanup
       return () => {
         stopPolling();
       };
@@ -82,7 +79,10 @@ const RankingsScreen = () => {
         <Text style={styles.errorIcon}>🔒</Text>
         <Text style={styles.errorTitle}>Ranking Oculto</Text>
         <Text style={styles.errorText}>
-          El ranking no está disponible en este momento. El administrador lo hará visible cuando corresponda.
+          El ranking no está disponible en este momento.
+        </Text>
+        <Text style={styles.errorSubtext}>
+          El administrador lo hará visible cuando corresponda.
         </Text>
       </View>
     );
@@ -102,18 +102,22 @@ const RankingsScreen = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>🏆 Ranking</Text>
+        <Text style={styles.headerEmoji}>🏆</Text>
+        <Text style={styles.headerTitle}>Ranking</Text>
         <Text style={styles.headerSubtitle}>Top 10 Participantes</Text>
       </View>
 
       <ScrollView
         style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+        showsVerticalScrollIndicator={false}
       >
         {rankings.length === 0 ? (
           <View style={styles.emptyContainer}>
+            <Text style={styles.emptyEmoji}>📊</Text>
             <Text style={styles.emptyText}>
               No hay datos de ranking para mostrar.
             </Text>
@@ -130,11 +134,25 @@ const RankingsScreen = () => {
               ]}
             >
               <View style={styles.rankPosition}>
-                {index === 0 && <Text style={styles.medalIcon}>🥇</Text>}
-                {index === 1 && <Text style={styles.medalIcon}>🥈</Text>}
-                {index === 2 && <Text style={styles.medalIcon}>🥉</Text>}
+                {index === 0 && (
+                  <View style={[styles.medalContainer, styles.goldMedal]}>
+                    <Text style={styles.medalIcon}>🥇</Text>
+                  </View>
+                )}
+                {index === 1 && (
+                  <View style={[styles.medalContainer, styles.silverMedal]}>
+                    <Text style={styles.medalIcon}>🥈</Text>
+                  </View>
+                )}
+                {index === 2 && (
+                  <View style={[styles.medalContainer, styles.bronzeMedal]}>
+                    <Text style={styles.medalIcon}>🥉</Text>
+                  </View>
+                )}
                 {index > 2 && (
-                  <Text style={styles.positionNumber}>{index + 1}</Text>
+                  <View style={styles.positionCircle}>
+                    <Text style={styles.positionNumber}>{index + 1}</Text>
+                  </View>
                 )}
               </View>
 
@@ -145,7 +163,12 @@ const RankingsScreen = () => {
                 </Text>
               </View>
 
-              <View style={styles.rankBadge}>
+              <View style={[
+                styles.rankBadge,
+                index === 0 && styles.badgeGold,
+                index === 1 && styles.badgeSilver,
+                index === 2 && styles.badgeBronze,
+              ]}>
                 <Text style={styles.rankBadgeText}>{rank.points}</Text>
               </View>
             </View>
@@ -155,7 +178,7 @@ const RankingsScreen = () => {
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            🔄 Actualizando automáticamente cada 30 segundos
+            🔄 Actualización automática cada 30 segundos
           </Text>
         </View>
       </ScrollView>
@@ -175,15 +198,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 15,
     fontSize: 16,
     color: '#666',
+    fontWeight: '600',
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 30,
     backgroundColor: '#F5F5F5',
   },
   errorIcon: {
@@ -191,38 +215,64 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   errorTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#1a1a1a',
     marginBottom: 10,
   },
   errorText: {
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+    marginBottom: 8,
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
   },
   header: {
     backgroundColor: '#D52B1E',
-    padding: 20,
-    paddingTop: 40,
+    paddingTop: 60,
+    paddingBottom: 30,
     alignItems: 'center',
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  headerEmoji: {
+    fontSize: 50,
+    marginBottom: 10,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: 'bold',
     color: '#FFF',
+    marginBottom: 5,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#FFF',
-    marginTop: 5,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '500',
   },
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    padding: 15,
+    paddingTop: 20,
+  },
   emptyContainer: {
-    padding: 40,
+    padding: 50,
     alignItems: 'center',
+  },
+  emptyEmoji: {
+    fontSize: 60,
+    marginBottom: 15,
   },
   emptyText: {
     fontSize: 16,
@@ -233,69 +283,113 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFF',
-    marginHorizontal: 10,
-    marginVertical: 5,
-    padding: 15,
-    borderRadius: 8,
+    marginBottom: 10,
+    padding: 16,
+    borderRadius: 15,
     borderLeftWidth: 4,
-    borderLeftColor: '#DDD',
+    borderLeftColor: '#E0E0E0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
   },
   rankItemFirst: {
     borderLeftColor: '#FFD700',
     backgroundColor: '#FFFEF7',
+    shadowColor: '#FFD700',
+    shadowOpacity: 0.2,
   },
   rankItemSecond: {
     borderLeftColor: '#C0C0C0',
     backgroundColor: '#FAFAFA',
+    shadowColor: '#C0C0C0',
+    shadowOpacity: 0.15,
   },
   rankItemThird: {
     borderLeftColor: '#CD7F32',
     backgroundColor: '#FFF9F5',
+    shadowColor: '#CD7F32',
+    shadowOpacity: 0.15,
   },
   rankPosition: {
-    width: 50,
+    width: 55,
     alignItems: 'center',
   },
+  medalContainer: {
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  goldMedal: {
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+  },
+  silverMedal: {
+    backgroundColor: 'rgba(192, 192, 192, 0.1)',
+  },
+  bronzeMedal: {
+    backgroundColor: 'rgba(205, 127, 50, 0.1)',
+  },
   medalIcon: {
-    fontSize: 32,
+    fontSize: 30,
+  },
+  positionCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   positionNumber: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#999',
   },
   rankInfo: {
     flex: 1,
-    marginLeft: 10,
+    marginLeft: 15,
   },
   rankUser: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#1a1a1a',
+    marginBottom: 4,
   },
   rankPoints: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
-    marginTop: 2,
+    fontWeight: '500',
   },
   rankBadge: {
     backgroundColor: '#D52B1E',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 15,
+    shadowColor: '#D52B1E',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  badgeGold: {
+    backgroundColor: '#FFD700',
+  },
+  badgeSilver: {
+    backgroundColor: '#C0C0C0',
+  },
+  badgeBronze: {
+    backgroundColor: '#CD7F32',
   },
   rankBadgeText: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
   },
   footer: {
-    padding: 20,
+    padding: 25,
     alignItems: 'center',
   },
   footerText: {
