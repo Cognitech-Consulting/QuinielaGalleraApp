@@ -270,3 +270,14 @@ export const pollRankings = (event_id, callback, interval = 30000) => {
 };
 
 export default api;
+
+export const hasSubmittedPredictions = async (user_id, event_id) => {
+  try {
+    const response = await api.get('/eventos/api/has-submitted-predictions/', {
+      params: { user_id, event_id },
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};

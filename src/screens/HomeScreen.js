@@ -1,4 +1,4 @@
-// src/screens/HomeScreen.js - PREMIUM BRANDED VERSION
+// src/screens/HomeScreen.js - LOCKED AFTER SUBMISSION
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -18,6 +18,7 @@ import {
   getUserTickets,
   checkParticipation,
   useTicket,
+  hasSubmittedPredictions,
 } from '../api/apiService';
 
 const HomeScreen = ({ navigation }) => {
@@ -27,6 +28,7 @@ const HomeScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [tickets, setTickets] = useState(0);
   const [hasParticipated, setHasParticipated] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
   const [pulseAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
@@ -72,6 +74,17 @@ const HomeScreen = ({ navigation }) => {
 
       const participationData = await checkParticipation(user.user_id, eventData.id);
       setHasParticipated(participationData.participated);
+
+      // CRITICAL: Check if user has submitted predictions
+      if (participationData.participated) {
+        try {
+          const submittedData = await hasSubmittedPredictions(user.user_id, eventData.id);
+          setHasSubmitted(submittedData.has_submitted);
+        } catch (error) {
+          console.error('Error checking submission:', error);
+          setHasSubmitted(false);
+        }
+      }
     } catch (error) {
       console.error('Error loading data:', error);
       Alert.alert('Error', 'No se pudo cargar el evento actual');
@@ -108,6 +121,7 @@ const HomeScreen = ({ navigation }) => {
               await useTicket(user.user_id, event.id);
               setTickets(tickets - 1);
               setHasParticipated(true);
+              setHasSubmitted(false); // User just participated, hasn't submitted yet
               navigation.navigate('Predictions', { event });
             } catch (error) {
               Alert.alert('Error', error.error || 'No se pudo usar el ticket');
@@ -204,16 +218,9 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Action Button */}
-        {hasParticipated ? (
-          <TouchableOpacity
-            style={styles.continueButton}
-            onPress={() => navigation.navigate('Predictions', { event })}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.continueButtonText}>Continuar Predicciones →</Text>
-          </TouchableOpacity>
-        ) : (
+        {/* Action Button - SMART LOGIC */}
+        {!hasParticipated ? (
+          // User hasn't participated yet
           <TouchableOpacity
             style={[styles.participateButton, tickets <= 0 && styles.buttonDisabled]}
             onPress={handleParticipate}
@@ -222,6 +229,33 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.participateButtonText}>
               {tickets > 0 ? 'Participar (1 Ticket)' : 'Sin Tickets'}
             </Text>
+          </TouchableOpacity>
+        ) : hasSubmitted ? (
+          // User has participated AND submitted - LOCKED
+          <View style={styles.lockedCard}>
+            <View style={styles.lockedHeader}>
+              <Text style={styles.lockedIcon}>🔒</Text>
+              <Text style={styles.lockedTitle}>Predicciones Enviadas</Text>
+            </View>
+            <Text style={styles.lockedText}>
+              Ya enviaste tus predicciones para este evento.
+            </Text>
+            <TouchableOpacity
+              style={styles.viewResultsButton}
+              onPress={() => navigation.navigate('Results')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.viewResultsButtonText}>Ver Mis Resultados →</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          // User has participated but NOT submitted yet
+          <TouchableOpacity
+            style={styles.continueButton}
+            onPress={() => navigation.navigate('Predictions', { event })}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.continueButtonText}>Continuar Predicciones →</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -491,6 +525,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     letterSpacing: 0.5,
+  },
+  lockedCard: {
+    backgroundColor: '#FFF9E6',
+    padding: 15,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FFC107',
+  },
+  lockedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  lockedIcon: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  lockedTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+  },
+  lockedText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 15,
+  },
+  viewResultsButton: {
+    backgroundColor: '#D52B1E',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  viewResultsButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   quickAccessSection: {
     marginTop: 30,

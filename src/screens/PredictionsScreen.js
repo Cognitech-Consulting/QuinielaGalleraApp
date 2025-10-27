@@ -1,4 +1,4 @@
-// src/screens/PredictionsScreen.js - PREMIUM BRANDED VERSION
+// src/screens/PredictionsScreen.js - ONE TIME SUBMISSION ONLY
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -10,15 +10,20 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { submitPredictions, pollCurrentEvent } from '../api/apiService';
+import { submitPredictions, pollCurrentEvent, checkParticipation } from '../api/apiService';
 
 const PredictionsScreen = ({ route, navigation }) => {
   const { user } = useAuth();
   const [event, setEvent] = useState(route.params?.event || null);
   const [predictions, setPredictions] = useState({});
   const [loading, setLoading] = useState(false);
+  const [hasParticipated, setHasParticipated] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(true);
 
   useEffect(() => {
+    verifyStatus();
+
     const stopPolling = pollCurrentEvent((data, error) => {
       if (data) {
         setEvent(data);
@@ -28,7 +33,44 @@ const PredictionsScreen = ({ route, navigation }) => {
     return () => stopPolling();
   }, []);
 
+  const verifyStatus = async () => {
+    if (!event) return;
+    
+    try {
+      setCheckingStatus(true);
+      const result = await checkParticipation(user.user_id, event.id);
+      
+      if (!result.participated) {
+        Alert.alert(
+          'No Autorizado',
+          'Debes participar en el evento antes de hacer predicciones.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      } else {
+        setHasParticipated(true);
+        // Check if user already submitted predictions by trying to get them
+        checkIfAlreadySubmitted();
+      }
+    } catch (error) {
+      console.error('Error checking status:', error);
+      Alert.alert('Error', 'No se pudo verificar tu estado en el evento.');
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
+  const checkIfAlreadySubmitted = async () => {
+    // We'll check this by attempting to submit
+    // The backend will tell us if we already submitted
+    setHasSubmitted(false); // Assume not submitted until proven otherwise
+  };
+
   const handlePrediction = (peleaId, choice) => {
+    if (hasSubmitted) {
+      Alert.alert('Predicciones Bloqueadas', 'Ya enviaste tus predicciones. No puedes modificarlas.');
+      return;
+    }
+    
     setPredictions({
       ...predictions,
       [peleaId]: choice,
@@ -60,16 +102,16 @@ const PredictionsScreen = ({ route, navigation }) => {
     if (predictionsCount < totalPeleas) {
       Alert.alert(
         'Predicciones Incompletas',
-        `Has completado ${predictionsCount} de ${totalPeleas} predicciones.\n\n¿Deseas enviar tus predicciones ahora? Podrás agregar más predicciones después si lo deseas.`,
+        `Has completado ${predictionsCount} de ${totalPeleas} predicciones.\n\n⚠️ ADVERTENCIA: Una vez enviadas, NO podrás modificarlas.\n\n¿Deseas enviar ahora?`,
         [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Enviar Ahora', onPress: submitUserPredictions },
+          { text: 'Enviar Ahora', style: 'destructive', onPress: submitUserPredictions },
         ]
       );
     } else {
       Alert.alert(
         'Confirmar Envío',
-        `¿Deseas enviar tus ${predictionsCount} predicciones?`,
+        `¿Deseas enviar tus ${predictionsCount} predicciones?\n\n⚠️ Una vez enviadas, NO podrás modificarlas.`,
         [
           { text: 'Cancelar', style: 'cancel' },
           { text: 'Enviar', onPress: submitUserPredictions },
@@ -82,24 +124,24 @@ const PredictionsScreen = ({ route, navigation }) => {
     try {
       setLoading(true);
       
-      // Convert predictions object to array format expected by backend
       const predictionsArray = Object.entries(predictions).map(([peleaId, choice]) => ({
         pelea_id: parseInt(peleaId),
         prediccion: choice
       }));
       
-      console.log('Submitting predictions:', {
+      console.log('Submitting predictions (ONE TIME):', {
         user_id: user.user_id,
         event_id: event.id,
         predictions: predictionsArray
       });
       
-      // Include event_id in the submission
       const result = await submitPredictions(user.user_id, event.id, predictionsArray);
+      
+      setHasSubmitted(true); // Lock predictions
       
       Alert.alert(
         '¡Éxito!',
-        `Predicciones enviadas correctamente!\nPuntos actuales: ${result.total_points || 0}`,
+        `Predicciones enviadas correctamente!\n\nPuntos actuales: ${result.total_points || 0}\n\n✓ Tus predicciones están bloqueadas.`,
         [
           {
             text: 'Ver Resultados',
@@ -114,14 +156,17 @@ const PredictionsScreen = ({ route, navigation }) => {
     } catch (error) {
       console.error('Submit predictions error:', error);
       
-      // Handle different error formats
       let errorMessage = 'No se pudieron enviar las predicciones';
+      
       if (typeof error === 'string') {
         errorMessage = error;
       } else if (error.error) {
         errorMessage = error.error;
-      } else if (error.message) {
-        errorMessage = error.message;
+        
+        // Check if already submitted
+        if (errorMessage.includes('Ya has enviado') || errorMessage.includes('modificarlas')) {
+          setHasSubmitted(true);
+        }
       }
       
       Alert.alert('Error', errorMessage);
@@ -130,10 +175,48 @@ const PredictionsScreen = ({ route, navigation }) => {
     }
   };
 
-  if (!event) {
+  if (checkingStatus) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#D52B1E" />
+        <Text style={styles.loadingText}>Verificando estado...</Text>
+      </View>
+    );
+  }
+
+  if (!event || !hasParticipated) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#D52B1E" />
+      </View>
+    );
+  }
+
+  if (hasSubmitted) {
+    return (
+      <View style={styles.lockedContainer}>
+        <Text style={styles.lockedIcon}>🔒</Text>
+        <Text style={styles.lockedTitle}>Predicciones Bloqueadas</Text>
+        <Text style={styles.lockedText}>
+          Ya enviaste tus predicciones para este evento.
+        </Text>
+        <Text style={styles.lockedSubtext}>
+          No puedes modificarlas. Ve a "Resultados" para ver tus puntos.
+        </Text>
+        <TouchableOpacity
+          style={styles.goToResultsButton}
+          onPress={() => navigation.navigate('Results')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.goToResultsButtonText}>Ver Mis Resultados</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.goHomeButton}
+          onPress={() => navigation.navigate('Home')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.goHomeButtonText}>Volver al Inicio</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -152,6 +235,10 @@ const PredictionsScreen = ({ route, navigation }) => {
           <Text style={styles.progressText}>
             {getPredictionsCount()} / {getTotalPeleas()} Predicciones
           </Text>
+        </View>
+        
+        <View style={styles.warningBadge}>
+          <Text style={styles.warningText}>⚠️ Solo puedes enviar UNA vez</Text>
         </View>
       </View>
 
@@ -239,8 +326,6 @@ const PredictionsScreen = ({ route, navigation }) => {
                     </Text>
                   </TouchableOpacity>
                 </View>
-
-                {/* Results are HIDDEN on predictions screen - users should NOT see who won! */}
               </View>
             ))}
           </View>
@@ -280,6 +365,68 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadingText: {
+    marginTop: 15,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '600',
+  },
+  lockedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 30,
+    backgroundColor: '#F5F5F5',
+  },
+  lockedIcon: {
+    fontSize: 80,
+    marginBottom: 20,
+  },
+  lockedTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+    marginBottom: 10,
+  },
+  lockedText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  lockedSubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 30,
+  },
+  goToResultsButton: {
+    backgroundColor: '#D52B1E',
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+    width: '80%',
+    alignItems: 'center',
+  },
+  goToResultsButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  goHomeButton: {
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 12,
+    width: '80%',
+    alignItems: 'center',
+  },
+  goHomeButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   header: {
     backgroundColor: '#D52B1E',
     paddingTop: 60,
@@ -317,6 +464,19 @@ const styles = StyleSheet.create({
   progressText: {
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
+  },
+  warningBadge: {
+    marginTop: 12,
+    backgroundColor: 'rgba(255, 193, 7, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  warningText: {
+    color: '#FFF',
+    fontSize: 12,
     fontWeight: '600',
   },
   scrollView: {
