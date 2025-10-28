@@ -1,4 +1,4 @@
-// src/screens/HomeScreen.js - LOCKED AFTER SUBMISSION
+// src/screens/HomeScreen.js - LOCKED AFTER SUBMISSION (FIXED)
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Animated,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import {
   getCurrentEvent,
@@ -63,6 +64,15 @@ const HomeScreen = ({ navigation }) => {
     };
   }, []);
 
+  // CRITICAL FIX: Reload data when screen comes into focus
+  // This ensures hasSubmitted is updated after returning from Predictions screen
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('HomeScreen focused - reloading data');
+      loadInitialData();
+    }, [])
+  );
+
   const loadInitialData = async () => {
     try {
       setLoading(true);
@@ -79,11 +89,14 @@ const HomeScreen = ({ navigation }) => {
       if (participationData.participated) {
         try {
           const submittedData = await hasSubmittedPredictions(user.user_id, eventData.id);
+          console.log('Submission check:', submittedData);
           setHasSubmitted(submittedData.has_submitted);
         } catch (error) {
           console.error('Error checking submission:', error);
           setHasSubmitted(false);
         }
+      } else {
+        setHasSubmitted(false);
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -218,7 +231,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Action Button - SMART LOGIC */}
+        {/* Action Button - SMART LOGIC WITH FIX */}
         {!hasParticipated ? (
           // User hasn't participated yet
           <TouchableOpacity
@@ -231,7 +244,7 @@ const HomeScreen = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
         ) : hasSubmitted ? (
-          // User has participated AND submitted - LOCKED
+          // User has participated AND submitted - LOCKED (THIS WILL NOW SHOW CORRECTLY)
           <View style={styles.lockedCard}>
             <View style={styles.lockedHeader}>
               <Text style={styles.lockedIcon}>🔒</Text>
