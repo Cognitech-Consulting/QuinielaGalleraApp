@@ -12,8 +12,12 @@
       "distribution": "internal"
     },
     "production": {
+      "env": {
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "1"
+      },
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "autoIncrement": true
       }
     }
   }

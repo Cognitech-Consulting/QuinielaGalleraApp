@@ -2,7 +2,7 @@
   "expo": {
     "name": "QuinielaGallera",
     "slug": "quinielagallera",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -18,16 +18,22 @@
     },
     "android": {
       "package": "com.quinielagallera.app",
-      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#D52B1E"
       }
     },
-    "web": { "favicon": "./assets/favicon.png" },
-    "plugins": ["expo-font"],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-web-browser"
+    ],
     "extra": {
-      "eas": { "projectId": "9b3926d0-4902-4eb7-93bd-e2acf6fc2287" }
+      "eas": {
+        "projectId": "9b3926d0-4902-4eb7-93bd-e2acf6fc2287"
+      }
     }
   }
 }
