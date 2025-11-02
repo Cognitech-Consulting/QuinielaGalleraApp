@@ -281,3 +281,30 @@ export const hasSubmittedPredictions = async (user_id, event_id) => {
     throw error.response?.data || error.message;
   }
 };
+
+export const uploadProfilePicture = async (userId, imageUri) => {
+  try {
+    const formData = new FormData();
+    formData.append('user_id', userId);
+    formData.append('profile_picture', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'profile.jpg',
+    });
+
+    const response = await axios.post(
+      `${BASE_URL}/api/accounts/upload-profile-picture/`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error uploading profile picture:', error);
+    throw error;
+  }
+};

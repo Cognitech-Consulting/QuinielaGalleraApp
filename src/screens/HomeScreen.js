@@ -16,47 +16,34 @@ import { useAuth } from '../context/AuthContext';
 import {
   getCurrentEvent,
   pollCurrentEvent,
-  getUserTickets,
   checkParticipation,
-  useTicket,
   hasSubmittedPredictions,
 } from '../api/apiService';
+
+const formatMonedas = (amount) => `${amount} 💰`;
 
 const HomeScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [tickets, setTickets] = useState(0);
+  const [monedas, setMonedas] = useState(0);
   const [hasParticipated, setHasParticipated] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [pulseAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
     loadInitialData();
-
-    // Pulse animation for live indicator
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.2,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulseAnim, { toValue: 1.2, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
       ])
     ).start();
 
     const stopPolling = pollCurrentEvent((data, error) => {
-      if (data) {
-        setEvent(data);
-      } else if (error) {
-        console.error('Polling error:', error);
-      }
+      if (data) setEvent(data);
+      else if (error) console.error('Polling error:', error);
     }, 15000);
 
     return () => {
@@ -64,11 +51,8 @@ const HomeScreen = ({ navigation }) => {
     };
   }, []);
 
-  // CRITICAL FIX: Reload data when screen comes into focus
-  // This ensures hasSubmitted is updated after returning from Predictions screen
   useFocusEffect(
     React.useCallback(() => {
-      console.log('HomeScreen focused - reloading data');
       loadInitialData();
     }, [])
   );
@@ -78,18 +62,12 @@ const HomeScreen = ({ navigation }) => {
       setLoading(true);
       const eventData = await getCurrentEvent();
       setEvent(eventData);
-
-      const ticketsData = await getUserTickets(user.user_id);
-      setTickets(ticketsData.event_tickets);
-
+      setMonedas(Number(user?.monedas ?? 0));
       const participationData = await checkParticipation(user.user_id, eventData.id);
       setHasParticipated(participationData.participated);
-
-      // CRITICAL: Check if user has submitted predictions
       if (participationData.participated) {
         try {
           const submittedData = await hasSubmittedPredictions(user.user_id, eventData.id);
-          console.log('Submission check:', submittedData);
           setHasSubmitted(submittedData.has_submitted);
         } catch (error) {
           console.error('Error checking submission:', error);
@@ -113,31 +91,26 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleParticipate = async () => {
-    if (tickets <= 0) {
-      Alert.alert(
-        'Sin Tickets',
-        'No tienes tickets disponibles para participar en este evento.',
-        [{ text: 'OK' }]
-      );
+    const canParticipate = monedas >= 50;
+    if (!canParticipate) {
+      Alert.alert('Sin Monedas', 'No tienes monedas suficientes para participar en este evento.', [{ text: 'OK' }]);
       return;
     }
-
     Alert.alert(
-      'Usar Ticket',
-      '¿Deseas usar 1 ticket para participar en este evento?\n\n✓ Hacer predicciones\n✓ Enviar predicciones\n✓ Ver resultados',
+      'Usar Monedas',
+      '¿Deseas usar 50 monedas para participar en este evento?\n\n✓ Hacer predicciones\n✓ Enviar predicciones\n✓ Ver resultados',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Usar Ticket',
+          text: 'Participar',
           onPress: async () => {
             try {
-              await useTicket(user.user_id, event.id);
-              setTickets(tickets - 1);
+              setMonedas((m) => m - 50);
               setHasParticipated(true);
-              setHasSubmitted(false); // User just participated, hasn't submitted yet
+              setHasSubmitted(false);
               navigation.navigate('Predictions', { event });
             } catch (error) {
-              Alert.alert('Error', error.error || 'No se pudo usar el ticket');
+              Alert.alert('Error', 'No se pudo procesar la participación');
             }
           },
         },
@@ -170,15 +143,14 @@ const HomeScreen = ({ navigation }) => {
     );
   }
 
+  const canParticipate = monedas >= 50;
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
@@ -186,24 +158,18 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.userIdText}>{user.user_id}</Text>
           </View>
           <View style={styles.ticketsContainer}>
-            <Text style={styles.ticketsLabel}>🎫 Tickets</Text>
-            <Text style={styles.ticketsCount}>{tickets}</Text>
+            <Text style={styles.ticketsLabel}>Monedas</Text>
+            <Text style={styles.ticketsCount}>{formatMonedas(monedas)}</Text>
           </View>
         </View>
       </View>
 
-      {/* Event Card */}
       <View style={styles.eventCard}>
         <View style={styles.liveIndicator}>
-          <Animated.View
-            style={[
-              styles.liveDot,
-              { transform: [{ scale: pulseAnim }] },
-            ]}
-          />
+          <Animated.View style={[styles.liveDot, { transform: [{ scale: pulseAnim }] }]} />
           <Text style={styles.liveText}>EN VIVO</Text>
         </View>
-        
+
         <View style={styles.eventHeader}>
           <Text style={styles.eventEmoji}>🏆</Text>
           <View style={styles.eventHeaderText}>
@@ -219,9 +185,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
           <View style={styles.eventDetailRow}>
             <Text style={styles.eventDetailIcon}>🎯</Text>
-            <Text style={styles.eventDetailText}>
-              {event.rondas?.length || 0} Rondas
-            </Text>
+            <Text style={styles.eventDetailText}>{event.rondas?.length || 0} Rondas</Text>
           </View>
           <View style={styles.eventDetailRow}>
             <Text style={styles.eventDetailIcon}>⚔️</Text>
@@ -231,28 +195,23 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Action Button - SMART LOGIC WITH FIX */}
         {!hasParticipated ? (
-          // User hasn't participated yet
           <TouchableOpacity
-            style={[styles.participateButton, tickets <= 0 && styles.buttonDisabled]}
+            style={[styles.participateButton, !canParticipate && styles.buttonDisabled]}
             onPress={handleParticipate}
             activeOpacity={0.8}
           >
             <Text style={styles.participateButtonText}>
-              {tickets > 0 ? 'Participar (1 Ticket)' : 'Sin Tickets'}
+              {canParticipate ? 'Participar (50 Monedas)' : 'Sin Monedas'}
             </Text>
           </TouchableOpacity>
         ) : hasSubmitted ? (
-          // User has participated AND submitted - LOCKED (THIS WILL NOW SHOW CORRECTLY)
           <View style={styles.lockedCard}>
             <View style={styles.lockedHeader}>
               <Text style={styles.lockedIcon}>🔒</Text>
               <Text style={styles.lockedTitle}>Predicciones Enviadas</Text>
             </View>
-            <Text style={styles.lockedText}>
-              Ya enviaste tus predicciones para este evento.
-            </Text>
+            <Text style={styles.lockedText}>Ya enviaste tus predicciones para este evento.</Text>
             <TouchableOpacity
               style={styles.viewResultsButton}
               onPress={() => navigation.navigate('Results')}
@@ -262,7 +221,6 @@ const HomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         ) : (
-          // User has participated but NOT submitted yet
           <TouchableOpacity
             style={styles.continueButton}
             onPress={() => navigation.navigate('Predictions', { event })}
@@ -273,7 +231,6 @@ const HomeScreen = ({ navigation }) => {
         )}
       </View>
 
-      {/* Quick Access */}
       <View style={styles.quickAccessSection}>
         <Text style={styles.sectionTitle}>Acceso Rápido</Text>
         <View style={styles.quickAccess}>
@@ -312,7 +269,6 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Logout Button */}
       <TouchableOpacity style={styles.logoutButton} onPress={logout}>
         <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
       </TouchableOpacity>
@@ -321,321 +277,84 @@ const HomeScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  scrollContent: {
-    paddingBottom: 30,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-  },
+  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  scrollContent: { paddingBottom: 30 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F5F5' },
   logoCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#FFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
+    width: 100, height: 100, borderRadius: 50, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 6,
   },
-  logoEmoji: {
-    fontSize: 50,
-  },
-  loadingText: {
-    marginTop: 20,
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#F5F5F5',
-  },
-  emptyEmoji: {
-    fontSize: 80,
-    marginBottom: 20,
-  },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 10,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 30,
-  },
+  logoEmoji: { fontSize: 50 },
+  loadingText: { marginTop: 20, fontSize: 16, color: '#666', fontWeight: '600' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#F5F5F5' },
+  emptyEmoji: { fontSize: 80, marginBottom: 20 },
+  emptyTitle: { fontSize: 24, fontWeight: 'bold', color: '#1a1a1a', marginBottom: 10 },
+  emptyText: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 30 },
   header: {
-    backgroundColor: '#D52B1E',
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: '#D52B1E', paddingTop: 50, paddingBottom: 20, paddingHorizontal: 20,
+    borderBottomLeftRadius: 30, borderBottomRightRadius: 30,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 8,
   },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  welcomeText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '500',
-  },
-  userIdText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  welcomeText: { fontSize: 14, color: 'rgba(255, 255, 255, 0.8)', fontWeight: '500' },
+  userIdText: { fontSize: 24, fontWeight: 'bold', color: '#FFF' },
   ticketsContainer: {
-    backgroundColor: '#FFC107',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    backgroundColor: '#FFC107', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 15,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4,
   },
-  ticketsLabel: {
-    fontSize: 11,
-    color: '#1a1a1a',
-    fontWeight: '600',
-  },
-  ticketsCount: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    textAlign: 'center',
-  },
+  ticketsLabel: { fontSize: 11, color: '#1a1a1a', fontWeight: '600' },
+  ticketsCount: { fontSize: 20, fontWeight: 'bold', color: '#1a1a1a', textAlign: 'center' },
   eventCard: {
-    backgroundColor: '#FFF',
-    marginHorizontal: 20,
-    marginTop: -30,
-    padding: 20,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 10,
+    backgroundColor: '#FFF', marginHorizontal: 20, marginTop: -30, padding: 20, borderRadius: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 10,
   },
-  liveIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  liveDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#00FF00',
-    marginRight: 8,
-  },
-  liveText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#00FF00',
-    letterSpacing: 1,
-  },
-  eventHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  eventEmoji: {
-    fontSize: 40,
-    marginRight: 15,
-  },
-  eventHeaderText: {
-    flex: 1,
-  },
-  eventName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 5,
-  },
-  eventDate: {
-    fontSize: 14,
-    color: '#666',
-  },
-  eventDetails: {
-    backgroundColor: '#F8F8F8',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 20,
-  },
-  eventDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  eventDetailIcon: {
-    fontSize: 18,
-    marginRight: 10,
-  },
-  eventDetailText: {
-    fontSize: 15,
-    color: '#333',
-    fontWeight: '500',
-  },
+  liveIndicator: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+  liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#00FF00', marginRight: 8 },
+  liveText: { fontSize: 12, fontWeight: 'bold', color: '#00FF00', letterSpacing: 1 },
+  eventHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+  eventEmoji: { fontSize: 40, marginRight: 15 },
+  eventHeaderText: { flex: 1 },
+  eventName: { fontSize: 22, fontWeight: 'bold', color: '#1a1a1a', marginBottom: 5 },
+  eventDate: { fontSize: 14, color: '#666' },
+  eventDetails: { backgroundColor: '#F8F8F8', borderRadius: 12, padding: 15, marginBottom: 20 },
+  eventDetailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  eventDetailIcon: { fontSize: 18, marginRight: 10 },
+  eventDetailText: { fontSize: 15, color: '#333', fontWeight: '500' },
   participateButton: {
-    backgroundColor: '#D52B1E',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#D52B1E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
+    backgroundColor: '#D52B1E', padding: 16, borderRadius: 12, alignItems: 'center',
+    shadowColor: '#D52B1E', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6,
   },
   continueButton: {
-    backgroundColor: '#2ECC71',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#2ECC71',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
+    backgroundColor: '#2ECC71', padding: 16, borderRadius: 12, alignItems: 'center',
+    shadowColor: '#2ECC71', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6,
   },
-  buttonDisabled: {
-    backgroundColor: '#999',
-    opacity: 0.6,
-  },
-  participateButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-  continueButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-  lockedCard: {
-    backgroundColor: '#FFF9E6',
-    padding: 15,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#FFC107',
-  },
-  lockedHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  lockedIcon: {
-    fontSize: 24,
-    marginRight: 10,
-  },
-  lockedTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-  },
-  lockedText: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 15,
-  },
-  viewResultsButton: {
-    backgroundColor: '#D52B1E',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  viewResultsButtonText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  quickAccessSection: {
-    marginTop: 30,
-    marginHorizontal: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 15,
-  },
-  quickAccess: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
+  buttonDisabled: { backgroundColor: '#999', opacity: 0.6 },
+  participateButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold', letterSpacing: 0.5 },
+  continueButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold', letterSpacing: 0.5 },
+  lockedCard: { backgroundColor: '#FFF9E6', padding: 15, borderRadius: 12, borderWidth: 2, borderColor: '#FFC107' },
+  lockedHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  lockedIcon: { fontSize: 24, marginRight: 10 },
+  lockedTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a1a' },
+  lockedText: { fontSize: 14, color: '#666', marginBottom: 15 },
+  viewResultsButton: { backgroundColor: '#D52B1E', padding: 12, borderRadius: 8, alignItems: 'center' },
+  viewResultsButtonText: { color: '#FFF', fontSize: 14, fontWeight: 'bold' },
+  quickAccessSection: { marginTop: 30, marginHorizontal: 20 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1a1a1a', marginBottom: 15 },
+  quickAccess: { flexDirection: 'row', justifyContent: 'space-between' },
   quickButton: {
-    backgroundColor: '#FFF',
-    padding: 15,
-    borderRadius: 15,
-    alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 4,
+    backgroundColor: '#FFF', padding: 15, borderRadius: 15, alignItems: 'center', flex: 1, marginHorizontal: 5,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 4,
   },
   quickButtonIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
+    width: 50, height: 50, borderRadius: 25, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', marginBottom: 10,
   },
-  quickButtonIcon: {
-    fontSize: 24,
-  },
-  quickButtonText: {
-    fontSize: 12,
-    color: '#333',
-    textAlign: 'center',
-    fontWeight: '600',
-  },
+  quickButtonIcon: { fontSize: 24 },
+  quickButtonText: { fontSize: 12, color: '#333', textAlign: 'center', fontWeight: '600' },
   logoutButton: {
-    backgroundColor: '#1a1a1a',
-    marginHorizontal: 20,
-    marginTop: 30,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#333',
+    backgroundColor: '#1a1a1a', marginHorizontal: 20, marginTop: 30, padding: 16, borderRadius: 12, alignItems: 'center',
+    borderWidth: 1, borderColor: '#333',
   },
-  logoutButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  logoutButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
 });
 
 export default HomeScreen;
