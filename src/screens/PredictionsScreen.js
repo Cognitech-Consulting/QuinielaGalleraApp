@@ -1,646 +1,409 @@
-// src/screens/PredictionsScreen.js - ONE TIME SUBMISSION ONLY
 import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  ScrollView,
-  TouchableOpacity,
   StyleSheet,
+  TouchableOpacity,
+  FlatList,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { submitPredictions, pollCurrentEvent, checkParticipation } from '../api/apiService';
+import apiService from '../api/apiService';
 
-const PredictionsScreen = ({ route, navigation }) => {
-  const { user } = useAuth();
-  const [event, setEvent] = useState(route.params?.event || null);
+export default function PredictionsScreen({ route, navigation }) {
+  const { ronda, evento, participationId } = route.params;
+  const { user, refreshUser } = useAuth();
+  const [peleas, setPeleas] = useState([]);
   const [predictions, setPredictions] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [hasParticipated, setHasParticipated] = useState(false);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [checkingStatus, setCheckingStatus] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    verifyStatus();
-
-    const stopPolling = pollCurrentEvent((data, error) => {
-      if (data) {
-        setEvent(data);
-      }
-    }, 15000);
-
-    return () => stopPolling();
+    loadRondaFights();
   }, []);
 
-  const verifyStatus = async () => {
-    if (!event) return;
-    
-    try {
-      setCheckingStatus(true);
-      const result = await checkParticipation(user.user_id, event.id);
-      
-      if (!result.participated) {
-        Alert.alert(
-          'No Autorizado',
-          'Debes participar en el evento antes de hacer predicciones.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
-      } else {
-        setHasParticipated(true);
-        // Check if user already submitted predictions by trying to get them
-        checkIfAlreadySubmitted();
-      }
-    } catch (error) {
-      console.error('Error checking status:', error);
-      Alert.alert('Error', 'No se pudo verificar tu estado en el evento.');
-    } finally {
-      setCheckingStatus(false);
-    }
-  };
-
-  const checkIfAlreadySubmitted = async () => {
-    // We'll check this by attempting to submit
-    // The backend will tell us if we already submitted
-    setHasSubmitted(false); // Assume not submitted until proven otherwise
-  };
-
-  const handlePrediction = (peleaId, choice) => {
-    if (hasSubmitted) {
-      Alert.alert('Predicciones Bloqueadas', 'Ya enviaste tus predicciones. No puedes modificarlas.');
-      return;
-    }
-    
-    setPredictions({
-      ...predictions,
-      [peleaId]: choice,
-    });
-  };
-
-  const getTotalPeleas = () => {
-    return event?.rondas?.reduce((total, ronda) => 
-      total + (ronda.peleas?.length || 0), 0
-    ) || 0;
-  };
-
-  const getPredictionsCount = () => {
-    return Object.keys(predictions).length;
-  };
-
-  const handleSubmit = async () => {
-    const totalPeleas = getTotalPeleas();
-    const predictionsCount = getPredictionsCount();
-
-    if (predictionsCount === 0) {
-      Alert.alert(
-        'Sin Predicciones',
-        'Debes hacer al menos una predicción antes de enviar.'
-      );
-      return;
-    }
-
-    if (predictionsCount < totalPeleas) {
-      Alert.alert(
-        'Predicciones Incompletas',
-        `Has completado ${predictionsCount} de ${totalPeleas} predicciones.\n\n⚠️ ADVERTENCIA: Una vez enviadas, NO podrás modificarlas.\n\n¿Deseas enviar ahora?`,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Enviar Ahora', style: 'destructive', onPress: submitUserPredictions },
-        ]
-      );
-    } else {
-      Alert.alert(
-        'Confirmar Envío',
-        `¿Deseas enviar tus ${predictionsCount} predicciones?\n\n⚠️ Una vez enviadas, NO podrás modificarlas.`,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Enviar', onPress: submitUserPredictions },
-        ]
-      );
-    }
-  };
-
-  const submitUserPredictions = async () => {
+  const loadRondaFights = async () => {
     try {
       setLoading(true);
-      
-      const predictionsArray = Object.entries(predictions).map(([peleaId, choice]) => ({
-        pelea_id: parseInt(peleaId),
-        prediccion: choice
-      }));
-      
-      console.log('Submitting predictions (ONE TIME):', {
-        user_id: user.user_id,
-        event_id: event.id,
-        predictions: predictionsArray
-      });
-      
-      const result = await submitPredictions(user.user_id, event.id, predictionsArray);
-      
-      setHasSubmitted(true); // Lock predictions
-      
-      Alert.alert(
-        '¡Éxito!',
-        `Predicciones enviadas correctamente!\n\nPuntos actuales: ${result.total_points || 0}\n\n✓ Tus predicciones están bloqueadas.`,
-        [
-          {
-            text: 'Ver Resultados',
-            onPress: () => navigation.navigate('Results'),
-          },
-          {
-            text: 'Volver al Inicio',
-            onPress: () => navigation.navigate('Home'),
-          },
-        ]
-      );
-    } catch (error) {
-      console.error('Submit predictions error:', error);
-      
-      let errorMessage = 'No se pudieron enviar las predicciones';
-      
-      if (typeof error === 'string') {
-        errorMessage = error;
-      } else if (error.error) {
-        errorMessage = error.error;
-        
-        // Check if already submitted
-        if (errorMessage.includes('Ya has enviado') || errorMessage.includes('modificarlas')) {
-          setHasSubmitted(true);
-        }
+      // The peleas are already in the ronda object from the previous screen
+      if (ronda.peleas && ronda.peleas.length > 0) {
+        setPeleas(ronda.peleas);
+        // Initialize predictions object
+        const initialPredictions = {};
+        ronda.peleas.forEach(pelea => {
+          initialPredictions[pelea.id] = null;
+        });
+        setPredictions(initialPredictions);
       }
-      
-      Alert.alert('Error', errorMessage);
+    } catch (error) {
+      console.error('Error loading fights:', error);
+      Alert.alert('Error', 'No se pudieron cargar las peleas');
     } finally {
       setLoading(false);
     }
   };
 
-  if (checkingStatus) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#D52B1E" />
-        <Text style={styles.loadingText}>Verificando estado...</Text>
-      </View>
-    );
-  }
+  const handlePrediction = (peleaId, prediccion) => {
+    setPredictions(prev => ({
+      ...prev,
+      [peleaId]: prediccion,
+    }));
+  };
 
-  if (!event || !hasParticipated) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#D52B1E" />
-      </View>
-    );
-  }
+  const validatePredictions = () => {
+    const allSelected = Object.values(predictions).every(pred => pred !== null);
+    if (!allSelected) {
+      Alert.alert(
+        'Predicciones Incompletas',
+        'Debes hacer una predicción para todas las peleas'
+      );
+      return false;
+    }
+    return true;
+  };
 
-  if (hasSubmitted) {
+  const handleSubmit = async () => {
+    if (!validatePredictions()) return;
+
+    Alert.alert(
+      'Confirmar Predicciones',
+      `¿Estás seguro de enviar tus predicciones para la Ronda ${ronda.numero}?\n\nNo podrás cambiarlas después.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Confirmar',
+          onPress: submitPredictions,
+        },
+      ]
+    );
+  };
+
+  const submitPredictions = async () => {
+    try {
+      setSubmitting(true);
+
+      // Format predictions for API
+      const predictionsArray = Object.entries(predictions).map(([peleaId, prediccion]) => ({
+        pelea_id: parseInt(peleaId),
+        prediccion: prediccion,
+      }));
+
+      const response = await apiService.submitRondaPredictions(
+        participationId,
+        predictionsArray
+      );
+
+      if (response.success) {
+        await refreshUser();
+        Alert.alert(
+          '¡Éxito!',
+          `Predicciones enviadas correctamente para la Ronda ${ronda.numero}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error submitting predictions:', error);
+      Alert.alert(
+        'Error',
+        error.message || 'No se pudieron enviar las predicciones'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const renderPelea = ({ item }) => {
+    const selectedPrediction = predictions[item.id];
+
     return (
-      <View style={styles.lockedContainer}>
-        <Text style={styles.lockedIcon}>🔒</Text>
-        <Text style={styles.lockedTitle}>Predicciones Bloqueadas</Text>
-        <Text style={styles.lockedText}>
-          Ya enviaste tus predicciones para este evento.
-        </Text>
-        <Text style={styles.lockedSubtext}>
-          No puedes modificarlas. Ve a "Resultados" para ver tus puntos.
-        </Text>
+      <View style={styles.peleaCard}>
+        <View style={styles.peleaHeader}>
+          <Text style={styles.peleaNumber}>Pelea #{item.numero}</Text>
+          <Text style={styles.peleaCategory}>{item.categoria}</Text>
+        </View>
+
+        <View style={styles.fightersContainer}>
+          {/* Gallo 1 */}
+          <TouchableOpacity
+            style={[
+              styles.galloButton,
+              selectedPrediction === '1' && styles.galloButtonSelected,
+            ]}
+            onPress={() => handlePrediction(item.id, '1')}
+          >
+            <Text style={styles.galloLabel}>GALLO 1</Text>
+            <Text
+              style={[
+                styles.galloName,
+                selectedPrediction === '1' && styles.textSelected,
+              ]}
+            >
+              {item.gallo1_nombre}
+            </Text>
+            <Text style={styles.galloInfo}>{item.gallo1_dueno}</Text>
+            {item.gallo1_color && (
+              <Text style={styles.galloColor}>🎨 {item.gallo1_color}</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* VS */}
+          <View style={styles.vsContainer}>
+            <Text style={styles.vsText}>VS</Text>
+          </View>
+
+          {/* Gallo 2 */}
+          <TouchableOpacity
+            style={[
+              styles.galloButton,
+              selectedPrediction === '2' && styles.galloButtonSelected,
+            ]}
+            onPress={() => handlePrediction(item.id, '2')}
+          >
+            <Text style={styles.galloLabel}>GALLO 2</Text>
+            <Text
+              style={[
+                styles.galloName,
+                selectedPrediction === '2' && styles.textSelected,
+              ]}
+            >
+              {item.gallo2_nombre}
+            </Text>
+            <Text style={styles.galloInfo}>{item.gallo2_dueno}</Text>
+            {item.gallo2_color && (
+              <Text style={styles.galloColor}>🎨 {item.gallo2_color}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Empate Option */}
         <TouchableOpacity
-          style={styles.goToResultsButton}
-          onPress={() => navigation.navigate('Results')}
-          activeOpacity={0.8}
+          style={[
+            styles.empateButton,
+            selectedPrediction === 'empate' && styles.empateButtonSelected,
+          ]}
+          onPress={() => handlePrediction(item.id, 'empate')}
         >
-          <Text style={styles.goToResultsButtonText}>Ver Mis Resultados</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.goHomeButton}
-          onPress={() => navigation.navigate('Home')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.goHomeButtonText}>Volver al Inicio</Text>
+          <Text
+            style={[
+              styles.empateText,
+              selectedPrediction === 'empate' && styles.textSelected,
+            ]}
+          >
+            🤝 EMPATE
+          </Text>
         </TouchableOpacity>
       </View>
     );
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color="#e74c3c" />
+      </SafeAreaView>
+    );
   }
 
-  const progress = getTotalPeleas() > 0 ? getPredictionsCount() / getTotalPeleas() : 0;
+  const selectedCount = Object.values(predictions).filter(p => p !== null).length;
+  const totalCount = peleas.length;
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{event.nombre}</Text>
-        <View style={styles.progressContainer}>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-          </View>
-          <Text style={styles.progressText}>
-            {getPredictionsCount()} / {getTotalPeleas()} Predicciones
-          </Text>
-        </View>
-        
-        <View style={styles.warningBadge}>
-          <Text style={styles.warningText}>⚠️ Solo puedes enviar UNA vez</Text>
-        </View>
+        <Text style={styles.headerTitle}>{evento.nombre}</Text>
+        <Text style={styles.headerSubtitle}>Ronda {ronda.numero}</Text>
+        <Text style={styles.predictionsCount}>
+          {selectedCount} de {totalCount} predicciones
+        </Text>
       </View>
 
-      {/* Rounds and Fights */}
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {event.rondas?.map((ronda, rondaIndex) => (
-          <View key={ronda.id} style={styles.roundCard}>
-            <View style={styles.roundHeader}>
-              <Text style={styles.roundTitle}>Ronda {ronda.numero}</Text>
-              <View style={styles.roundBadge}>
-                <Text style={styles.roundBadgeText}>
-                  {ronda.peleas?.filter(p => predictions[p.id]).length || 0}/{ronda.peleas?.length || 0}
-                </Text>
-              </View>
-            </View>
-            
-            {ronda.peleas?.map((pelea, peleaIndex) => (
-              <View key={pelea.id} style={styles.fightCard}>
-                <View style={styles.fightHeader}>
-                  <Text style={styles.fightNumber}>Pelea #{peleaIndex + 1}</Text>
-                  {predictions[pelea.id] && (
-                    <View style={styles.completedBadge}>
-                      <Text style={styles.completedBadgeText}>✓</Text>
-                    </View>
-                  )}
-                </View>
-                
-                <Text style={styles.fightTitle}>
-                  {pelea.equipo1} <Text style={styles.vs}>VS</Text> {pelea.equipo2}
-                </Text>
-                
-                <View style={styles.choicesContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.choiceButton,
-                      predictions[pelea.id] === 'equipo1' && styles.choiceButtonSelected,
-                    ]}
-                    onPress={() => handlePrediction(pelea.id, 'equipo1')}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.choiceText,
-                        predictions[pelea.id] === 'equipo1' && styles.choiceTextSelected,
-                      ]}
-                    >
-                      {pelea.equipo1}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.choiceButton,
-                      styles.choiceButtonTie,
-                      predictions[pelea.id] === 'empate' && styles.choiceButtonSelectedTie,
-                    ]}
-                    onPress={() => handlePrediction(pelea.id, 'empate')}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.choiceText,
-                        predictions[pelea.id] === 'empate' && styles.choiceTextSelected,
-                      ]}
-                    >
-                      Empate
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.choiceButton,
-                      predictions[pelea.id] === 'equipo2' && styles.choiceButtonSelected,
-                    ]}
-                    onPress={() => handlePrediction(pelea.id, 'equipo2')}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.choiceText,
-                        predictions[pelea.id] === 'equipo2' && styles.choiceTextSelected,
-                      ]}
-                    >
-                      {pelea.equipo2}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        ))}
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
+      {/* Fights List */}
+      <FlatList
+        data={peleas}
+        renderItem={renderPelea}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+      />
 
       {/* Submit Button */}
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.submitButton, loading && styles.buttonDisabled]}
+          style={[
+            styles.submitButton,
+            (submitting || selectedCount < totalCount) && styles.submitButtonDisabled,
+          ]}
           onPress={handleSubmit}
-          disabled={loading}
-          activeOpacity={0.8}
+          disabled={submitting || selectedCount < totalCount}
         >
-          {loading ? (
-            <ActivityIndicator color="#FFF" />
+          {submitting ? (
+            <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.submitButtonText}>
-              Enviar Predicciones ({getPredictionsCount()})
+              {selectedCount < totalCount
+                ? `Completa todas las predicciones (${selectedCount}/${totalCount})`
+                : '✓ ENVIAR PREDICCIONES'}
             </Text>
           )}
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 15,
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '600',
-  },
-  lockedContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 30,
-    backgroundColor: '#F5F5F5',
-  },
-  lockedIcon: {
-    fontSize: 80,
-    marginBottom: 20,
-  },
-  lockedTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 10,
-  },
-  lockedText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  lockedSubtext: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    marginBottom: 30,
-  },
-  goToResultsButton: {
-    backgroundColor: '#D52B1E',
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 12,
-    marginBottom: 15,
-    width: '80%',
-    alignItems: 'center',
-  },
-  goToResultsButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  goHomeButton: {
     backgroundColor: '#1a1a1a',
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 12,
-    width: '80%',
-    alignItems: 'center',
-  },
-  goHomeButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
   header: {
-    backgroundColor: '#D52B1E',
-    paddingTop: 60,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: '#2c2c2c',
+    padding: 20,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: '#e74c3c',
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFF',
-    marginBottom: 15,
+    color: '#fff',
+    marginBottom: 5,
   },
-  progressContainer: {
-    marginTop: 10,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#FFC107',
-    borderRadius: 4,
-  },
-  progressText: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.9)',
+  headerSubtitle: {
+    fontSize: 18,
+    color: '#e74c3c',
     fontWeight: '600',
   },
-  warningBadge: {
-    marginTop: 12,
-    backgroundColor: 'rgba(255, 193, 7, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
+  predictionsCount: {
+    fontSize: 14,
+    color: '#95a5a6',
+    marginTop: 8,
   },
-  warningText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '600',
+  listContent: {
+    padding: 15,
   },
-  scrollView: {
-    flex: 1,
-  },
-  roundCard: {
-    backgroundColor: '#FFF',
-    margin: 15,
-    marginTop: 20,
+  peleaCard: {
+    backgroundColor: '#2c2c2c',
     borderRadius: 15,
     padding: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 4,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#3c3c3c',
   },
-  roundHeader: {
+  peleaHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 15,
     paddingBottom: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: '#F5F5F5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#3c3c3c',
   },
-  roundTitle: {
-    fontSize: 20,
+  peleaNumber: {
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#D52B1E',
+    color: '#e74c3c',
   },
-  roundBadge: {
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 12,
+  peleaCategory: {
+    fontSize: 14,
+    color: '#95a5a6',
   },
-  roundBadgeText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#666',
-  },
-  fightCard: {
-    backgroundColor: '#F9F9F9',
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: '#D52B1E',
-  },
-  fightHeader: {
+  fightersContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  fightNumber: {
-    fontSize: 12,
-    color: '#999',
-    fontWeight: '600',
+  galloButton: {
+    flex: 1,
+    backgroundColor: '#3c3c3c',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 2,
+    borderColor: '#3c3c3c',
   },
-  completedBadge: {
-    backgroundColor: '#2ECC71',
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    justifyContent: 'center',
-    alignItems: 'center',
+  galloButtonSelected: {
+    backgroundColor: '#e74c3c',
+    borderColor: '#c0392b',
   },
-  completedBadgeText: {
-    color: '#FFF',
-    fontSize: 12,
+  galloLabel: {
+    fontSize: 10,
+    color: '#95a5a6',
     fontWeight: 'bold',
+    marginBottom: 4,
   },
-  fightTitle: {
+  galloName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 12,
-    textAlign: 'center',
+    color: '#fff',
+    marginBottom: 4,
   },
-  vs: {
-    color: '#D52B1E',
-    fontSize: 14,
-  },
-  choicesContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  choiceButton: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: '#FFF',
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  choiceButtonTie: {
-    flex: 0.6,
-  },
-  choiceButtonSelected: {
-    backgroundColor: '#D52B1E',
-    borderColor: '#D52B1E',
-    shadowColor: '#D52B1E',
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  choiceButtonSelectedTie: {
-    backgroundColor: '#FFC107',
-    borderColor: '#FFC107',
-    shadowColor: '#FFC107',
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  choiceText: {
+  galloInfo: {
     fontSize: 12,
-    color: '#333',
-    fontWeight: 'bold',
-    textAlign: 'center',
+    color: '#bdc3c7',
   },
-  choiceTextSelected: {
-    color: '#FFF',
+  galloColor: {
+    fontSize: 11,
+    color: '#95a5a6',
+    marginTop: 4,
+  },
+  textSelected: {
+    color: '#fff',
+  },
+  vsContainer: {
+    marginHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vsText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#e74c3c',
+  },
+  empateButton: {
+    backgroundColor: '#3c3c3c',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 2,
+    borderColor: '#3c3c3c',
+    alignItems: 'center',
+  },
+  empateButtonSelected: {
+    backgroundColor: '#f39c12',
+    borderColor: '#d68910',
+  },
+  empateText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   footer: {
     padding: 15,
-    backgroundColor: '#FFF',
+    backgroundColor: '#2c2c2c',
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 8,
+    borderTopColor: '#3c3c3c',
   },
   submitButton: {
-    backgroundColor: '#2ECC71',
-    padding: 16,
+    backgroundColor: '#27ae60',
     borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
-    shadowColor: '#2ECC71',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
   },
-  buttonDisabled: {
-    backgroundColor: '#999',
-    opacity: 0.6,
+  submitButtonDisabled: {
+    backgroundColor: '#7f8c8d',
   },
   submitButtonText: {
-    color: '#FFF',
+    color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
-    letterSpacing: 0.5,
   },
 });
-
-export default PredictionsScreen;

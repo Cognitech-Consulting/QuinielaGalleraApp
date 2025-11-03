@@ -1,413 +1,402 @@
-// src/screens/ResultsScreen.js - PREMIUM BRANDED VERSION
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
+  FlatList,
   ActivityIndicator,
+  TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { pollUserResults } from '../api/apiService';
+import apiService from '../api/apiService';
 
-const ResultsScreen = () => {
+export default function ResultsScreen({ route, navigation }) {
+  const { evento } = route.params || {};
   const { user } = useAuth();
+  const [participations, setParticipations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [resultsVisible, setResultsVisible] = useState(false);
-  const [predictionResults, setPredictionResults] = useState([]);
-  const [totalPoints, setTotalPoints] = useState(0);
+  const [expandedRonda, setExpandedRonda] = useState(null);
 
   useEffect(() => {
-    const stopPolling = pollUserResults(user.user_id, (data, error) => {
-      if (data) {
-        setResultsVisible(data.resultsVisible);
-        setPredictionResults(data.predictionResults || []);
-        setTotalPoints(data.totalPoints || 0);
-        setLoading(false);
-      } else if (error) {
-        console.error('Polling error:', error);
-        setLoading(false);
-      }
-    }, 20000);
+    loadParticipations();
+  }, [evento]);
 
-    return () => stopPolling();
-  }, [user.user_id]);
+  const loadParticipations = async () => {
+    try {
+      setLoading(true);
+      const response = await apiService.getUserRondaParticipations(
+        user.user_id,
+        evento?.id
+      );
+      
+      if (response.participations) {
+        setParticipations(response.participations);
+      }
+    } catch (error) {
+      console.error('Error loading participations:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
+    loadParticipations();
   };
 
-  const calculateAccuracy = () => {
-    if (predictionResults.length === 0) return 0;
-    const correct = predictionResults.filter(r => r.correct).length;
-    return Math.round((correct / predictionResults.length) * 100);
+  const toggleRonda = (rondaId) => {
+    setExpandedRonda(expandedRonda === rondaId ? null : rondaId);
+  };
+
+  const getResultIcon = (resultado) => {
+    switch (resultado) {
+      case 'correcto':
+        return '✅';
+      case 'incorrecto':
+        return '❌';
+      case 'pendiente':
+        return '⏳';
+      default:
+        return '❓';
+    }
+  };
+
+  const renderPrediction = (prediction) => (
+    <View key={prediction.pelea_id} style={styles.predictionItem}>
+      <View style={styles.predictionHeader}>
+        <Text style={styles.predictionNumber}>Pelea #{prediction.pelea_numero}</Text>
+        <Text style={styles.resultIcon}>{getResultIcon(prediction.resultado)}</Text>
+      </View>
+      
+      <View style={styles.predictionDetails}>
+        <Text style={styles.predictionLabel}>Tu predicción:</Text>
+        <Text style={styles.predictionValue}>
+          {prediction.prediccion === '1'
+            ? `Gallo 1 (${prediction.gallo1_nombre})`
+            : prediction.prediccion === '2'
+            ? `Gallo 2 (${prediction.gallo2_nombre})`
+            : 'Empate'}
+        </Text>
+      </View>
+
+      {prediction.resultado_real && (
+        <View style={styles.predictionDetails}>
+          <Text style={styles.predictionLabel}>Resultado real:</Text>
+          <Text style={styles.resultValue}>
+            {prediction.resultado_real === '1'
+              ? `Ganó Gallo 1`
+              : prediction.resultado_real === '2'
+              ? `Ganó Gallo 2`
+              : 'Empate'}
+          </Text>
+        </View>
+      )}
+
+      {prediction.puntos > 0 && (
+        <View style={styles.pointsBadge}>
+          <Text style={styles.pointsText}>+{prediction.puntos} pts</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderParticipation = ({ item }) => {
+    const isExpanded = expandedRonda === item.ronda_id;
+    const statusColor =
+      item.total_points > 0
+        ? '#27ae60'
+        : item.predictions?.every(p => p.resultado === 'pendiente')
+        ? '#f39c12'
+        : '#e74c3c';
+
+    return (
+      <View style={styles.participationCard}>
+        <TouchableOpacity
+          style={styles.participationHeader}
+          onPress={() => toggleRonda(item.ronda_id)}
+        >
+          <View style={styles.participationInfo}>
+            <Text style={styles.rondaTitle}>Ronda {item.ronda_number}</Text>
+            <Text style={styles.participationDate}>
+              {new Date(item.participated_at).toLocaleDateString('es-ES', {
+                day: '2-digit',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </Text>
+          </View>
+
+          <View style={styles.participationStats}>
+            <View style={[styles.pointsBadgeHeader, { backgroundColor: statusColor }]}>
+              <Text style={styles.pointsHeaderText}>{item.total_points} pts</Text>
+            </View>
+            <Text style={styles.predictionsCountText}>
+              {item.predictions_count} peleas
+            </Text>
+          </View>
+
+          <Text style={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</Text>
+        </TouchableOpacity>
+
+        {isExpanded && item.predictions && (
+          <View style={styles.predictionsContainer}>
+            {item.predictions.map(renderPrediction)}
+          </View>
+        )}
+      </View>
+    );
   };
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#D52B1E" />
-        <Text style={styles.loadingText}>Cargando resultados...</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color="#e74c3c" />
+      </SafeAreaView>
     );
   }
 
-  if (!resultsVisible) {
+  if (participations.length === 0) {
     return (
-      <View style={styles.hiddenResultsContainer}>
-        <Text style={styles.hiddenIcon}>🔒</Text>
-        <Text style={styles.hiddenResultsTitle}>Resultados Ocultos</Text>
-        <Text style={styles.hiddenResultsText}>
-          Los resultados no están disponibles en este momento.
-        </Text>
-        <Text style={styles.hiddenResultsSubtext}>
-          El administrador los hará visibles próximamente.
-        </Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyIcon}>🎯</Text>
+          <Text style={styles.emptyTitle}>Sin Resultados</Text>
+          <Text style={styles.emptyText}>
+            Aún no has participado en ninguna ronda de este evento
+          </Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>Volver</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  const correctCount = predictionResults.filter(r => r.correct).length;
-  const incorrectCount = predictionResults.length - correctCount;
-  const accuracy = calculateAccuracy();
+  const totalPoints = participations.reduce((sum, p) => sum + (p.total_points || 0), 0);
+  const totalParticipations = participations.length;
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Mis Resultados</Text>
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Puntos</Text>
+        <Text style={styles.headerTitle}>{evento?.nombre || 'Resultados'}</Text>
+        <View style={styles.headerStats}>
+          <View style={styles.statBox}>
             <Text style={styles.statValue}>{totalPoints}</Text>
+            <Text style={styles.statLabel}>Puntos Totales</Text>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Precisión</Text>
-            <Text style={styles.statValue}>{accuracy}%</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Correctas</Text>
-            <Text style={[styles.statValue, styles.correctValue]}>{correctCount}</Text>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>{totalParticipations}</Text>
+            <Text style={styles.statLabel}>Rondas Jugadas</Text>
           </View>
         </View>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+      {/* Participations List */}
+      <FlatList
+        data={participations}
+        renderItem={renderParticipation}
+        keyExtractor={(item) => item.ronda_id.toString()}
+        contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#e74c3c']}
+            tintColor="#e74c3c"
+          />
         }
         showsVerticalScrollIndicator={false}
-      >
-        {predictionResults.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyEmoji}>📊</Text>
-            <Text style={styles.emptyText}>
-              No hay predicciones para mostrar.
-            </Text>
-          </View>
-        ) : (
-          predictionResults.map((result, index) => (
-            <View
-              key={result.pelea_id || index}
-              style={[
-                styles.resultCard,
-                result.correct ? styles.resultCardCorrect : styles.resultCardIncorrect,
-              ]}
-            >
-              <View style={styles.resultHeader}>
-                <Text style={styles.matchNumber}>Pelea #{index + 1}</Text>
-                {result.correct ? (
-                  <View style={styles.correctBadge}>
-                    <Text style={styles.badgeText}>✓ Correcto</Text>
-                  </View>
-                ) : (
-                  <View style={styles.incorrectBadge}>
-                    <Text style={styles.badgeText}>✗ Incorrecto</Text>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.matchInfo}>
-                <Text style={styles.matchTeams}>
-                  {result.equipo1} <Text style={styles.vs}>VS</Text> {result.equipo2}
-                </Text>
-              </View>
-
-              <View style={styles.resultDetails}>
-                <View style={styles.predictionRow}>
-                  <View style={styles.predictionLabel}>
-                    <Text style={styles.predictionLabelText}>Tu predicción</Text>
-                  </View>
-                  <Text style={styles.predictionValue}>
-                    {result.prediccion === 'equipo1' && result.equipo1}
-                    {result.prediccion === 'equipo2' && result.equipo2}
-                    {result.prediccion === 'empate' && 'Empate'}
-                  </Text>
-                </View>
-
-                <View style={styles.resultRow}>
-                  <View style={styles.resultLabel}>
-                    <Text style={styles.resultLabelText}>Resultado real</Text>
-                  </View>
-                  <Text style={[styles.resultValue, result.correct && styles.resultValueCorrect]}>
-                    {result.resultado === 'equipo1' && result.equipo1}
-                    {result.resultado === 'equipo2' && result.equipo2}
-                    {result.resultado === 'tie' && 'Empate'}
-                    {!result.resultado && 'Pendiente'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ))
-        )}
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            🔄 Actualización automática cada 20 segundos
-          </Text>
-        </View>
-      </ScrollView>
-    </View>
+      />
+    </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-  },
-  loadingText: {
-    marginTop: 15,
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '600',
-  },
-  hiddenResultsContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 30,
-    backgroundColor: '#F5F5F5',
-  },
-  hiddenIcon: {
-    fontSize: 80,
-    marginBottom: 20,
-  },
-  hiddenResultsTitle: {
-    fontSize: 24,
-    color: '#1a1a1a',
-    textAlign: 'center',
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  hiddenResultsText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  hiddenResultsSubtext: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
+    backgroundColor: '#1a1a1a',
   },
   header: {
-    backgroundColor: '#D52B1E',
-    paddingTop: 60,
-    paddingBottom: 25,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: '#2c2c2c',
+    padding: 20,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e74c3c',
   },
   headerTitle: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFF',
-    marginBottom: 20,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    padding: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginHorizontal: 4,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  correctValue: {
-    color: '#FFC107',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 15,
-    paddingTop: 20,
-  },
-  emptyContainer: {
-    padding: 50,
-    alignItems: 'center',
-  },
-  emptyEmoji: {
-    fontSize: 60,
+    color: '#fff',
     marginBottom: 15,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
     textAlign: 'center',
   },
-  resultCard: {
-    backgroundColor: '#FFF',
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 15,
-    borderLeftWidth: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  resultCardCorrect: {
-    borderLeftColor: '#2ECC71',
-  },
-  resultCardIncorrect: {
-    borderLeftColor: '#E74C3C',
-  },
-  resultHeader: {
+  headerStats: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
+  },
+  statBox: {
     alignItems: 'center',
-    marginBottom: 12,
   },
-  matchNumber: {
-    fontSize: 13,
-    color: '#999',
-    fontWeight: '600',
+  statValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#e74c3c',
   },
-  correctBadge: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  incorrectBadge: {
-    backgroundColor: '#FFEBEE',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  badgeText: {
+  statLabel: {
     fontSize: 12,
+    color: '#95a5a6',
+    marginTop: 4,
+  },
+  listContent: {
+    padding: 15,
+  },
+  participationCard: {
+    backgroundColor: '#2c2c2c',
+    borderRadius: 15,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#3c3c3c',
+    overflow: 'hidden',
+  },
+  participationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+  },
+  participationInfo: {
+    flex: 1,
+  },
+  rondaTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
   },
-  matchInfo: {
-    marginBottom: 12,
+  participationDate: {
+    fontSize: 12,
+    color: '#95a5a6',
   },
-  matchTeams: {
-    fontSize: 17,
+  participationStats: {
+    alignItems: 'flex-end',
+    marginRight: 10,
+  },
+  pointsBadgeHeader: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginBottom: 4,
+  },
+  pointsHeaderText: {
+    color: '#fff',
     fontWeight: 'bold',
-    color: '#1a1a1a',
+    fontSize: 16,
   },
-  vs: {
-    color: '#D52B1E',
-    fontSize: 14,
+  predictionsCountText: {
+    fontSize: 12,
+    color: '#95a5a6',
   },
-  resultDetails: {
-    backgroundColor: '#F9F9F9',
+  expandIcon: {
+    color: '#e74c3c',
+    fontSize: 16,
+  },
+  predictionsContainer: {
+    backgroundColor: '#1a1a1a',
+    padding: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#3c3c3c',
+  },
+  predictionItem: {
+    backgroundColor: '#2c2c2c',
     borderRadius: 10,
     padding: 12,
-  },
-  predictionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderLeftWidth: 4,
+    borderLeftColor: '#e74c3c',
   },
-  resultRow: {
+  predictionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 8,
+  },
+  predictionNumber: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#e74c3c',
+  },
+  resultIcon: {
+    fontSize: 20,
+  },
+  predictionDetails: {
+    marginBottom: 6,
   },
   predictionLabel: {
-    backgroundColor: '#E0E0E0',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  predictionLabelText: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '600',
+    fontSize: 11,
+    color: '#95a5a6',
+    marginBottom: 2,
   },
   predictionValue: {
     fontSize: 14,
-    color: '#333',
-    fontWeight: '600',
-  },
-  resultLabel: {
-    backgroundColor: '#D52B1E',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  resultLabelText: {
-    fontSize: 12,
-    color: '#FFF',
+    color: '#fff',
     fontWeight: '600',
   },
   resultValue: {
     fontSize: 14,
-    color: '#D52B1E',
+    color: '#f39c12',
+    fontWeight: '600',
+  },
+  pointsBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#27ae60',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 6,
+  },
+  pointsText: {
+    color: '#fff',
+    fontSize: 12,
     fontWeight: 'bold',
   },
-  resultValueCorrect: {
-    color: '#2ECC71',
-  },
-  footer: {
-    padding: 20,
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 40,
   },
-  footerText: {
-    fontSize: 12,
-    color: '#999',
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 10,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#95a5a6',
     textAlign: 'center',
+    marginBottom: 30,
+  },
+  backButton: {
+    backgroundColor: '#e74c3c',
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
-
-export default ResultsScreen;

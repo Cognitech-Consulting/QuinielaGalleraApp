@@ -1,109 +1,175 @@
-// App.js
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ActivityIndicator, View } from 'react-native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { Text, View, ActivityIndicator } from 'react-native';
 
-// Screens
+// Screens - All matching your actual file names
 import LoginScreen from './src/screens/LoginScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import EventDetailScreen from './src/screens/EventDetailScreen';
 import PredictionsScreen from './src/screens/PredictionsScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 import RankingsScreen from './src/screens/RankingsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
 
-// Auth Navigator (Login, SignUp)
-function AuthNavigator() {
+// Tab Navigator for authenticated users
+function MainTabs() {
   return (
-    <Stack.Navigator
+    <Tab.Navigator
       screenOptions={{
-        headerShown: false,
-      }}
-    >
-      <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="SignUp" component={SignUpScreen} />
-    </Stack.Navigator>
-  );
-}
-
-// Main App Navigator (Home, Predictions, Results, Rankings, Profile)
-function AppNavigator() {
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: '#D52B1E',
+        tabBarStyle: {
+          backgroundColor: '#2c2c2c',
+          borderTopColor: '#3c3c3c',
+          borderTopWidth: 1,
+          height: 60,
+          paddingBottom: 8,
         },
-        headerTintColor: '#FFF',
+        tabBarActiveTintColor: '#e74c3c',
+        tabBarInactiveTintColor: '#95a5a6',
+        headerStyle: {
+          backgroundColor: '#2c2c2c',
+        },
+        headerTintColor: '#fff',
         headerTitleStyle: {
           fontWeight: 'bold',
         },
       }}
     >
-      <Stack.Screen 
-        name="Home" 
+      <Tab.Screen
+        name="Home"
         component={HomeScreen}
         options={{
-          title: 'Quiniela Gallera',
-          headerShown: false,
+          title: 'Inicio',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>🏠</Text>,
+          headerTitle: '🐔 Predicciones de Gallos',
         }}
       />
-      <Stack.Screen 
-        name="Predictions" 
-        component={PredictionsScreen}
-        options={{
-          title: 'Hacer Predicciones',
-        }}
-      />
-      <Stack.Screen 
-        name="Results" 
-        component={ResultsScreen}
-        options={{
-          title: 'Mis Resultados',
-        }}
-      />
-      <Stack.Screen 
-        name="Rankings" 
+      <Tab.Screen
+        name="Rankings"
         component={RankingsScreen}
         options={{
           title: 'Rankings',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>🏆</Text>,
+          headerTitle: 'Rankings',
         }}
       />
-      <Stack.Screen 
-        name="Profile" 
+      <Tab.Screen
+        name="Profile"
         component={ProfileScreen}
         options={{
-          title: 'Mi Perfil',
+          title: 'Perfil',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>👤</Text>,
+          headerTitle: 'Mi Perfil',
         }}
       />
-    </Stack.Navigator>
+    </Tab.Navigator>
   );
 }
 
-// Root Navigator - switches between Auth and App based on user state
-function RootNavigator() {
+// Main App Navigator
+function AppNavigator() {
   const { user, loading } = useAuth();
 
+  // ✅ FIX: Show loading screen while checking auth state
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#D52B1E" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1A1A2E' }}>
+        <ActivityIndicator size="large" color="#FF6B6B" />
+        <Text style={{ color: '#FFF', marginTop: 10, fontSize: 16 }}>Cargando...</Text>
       </View>
     );
   }
 
-  return user ? <AppNavigator /> : <AuthNavigator />;
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: '#2c2c2c',
+        },
+        headerTintColor: '#fff',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+        headerBackTitleVisible: false,
+      }}
+    >
+      {!user ? (
+        // Auth Stack
+        <>
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="SignUp"
+            component={SignUpScreen}
+            options={{ headerShown: false }}
+          />
+        </>
+      ) : (
+        // Main App Stack
+        <>
+          <Stack.Screen
+            name="MainTabs"
+            component={MainTabs}
+            options={{ headerShown: false }}
+          />
+          
+          {/* Event Detail Screen */}
+          <Stack.Screen
+            name="EventDetail"
+            component={EventDetailScreen}
+            options={({ route }) => ({
+              title: route.params?.evento?.nombre || 'Detalles del Evento',
+              headerStyle: {
+                backgroundColor: '#2c2c2c',
+              },
+              headerTintColor: '#fff',
+            })}
+          />
+          
+          <Stack.Screen
+            name="Predictions"
+            component={PredictionsScreen}
+            options={{
+              title: 'Hacer Predicciones',
+              headerStyle: {
+                backgroundColor: '#2c2c2c',
+              },
+              headerTintColor: '#fff',
+            }}
+          />
+          
+          <Stack.Screen
+            name="Results"
+            component={ResultsScreen}
+            options={{
+              title: 'Resultados',
+              headerStyle: {
+                backgroundColor: '#2c2c2c',
+              },
+              headerTintColor: '#fff',
+            }}
+          />
+        </>
+      )}
+    </Stack.Navigator>
+  );
 }
 
+// Root App Component
 export default function App() {
   return (
     <AuthProvider>
       <NavigationContainer>
-        <RootNavigator />
+        <AppNavigator />
       </NavigationContainer>
     </AuthProvider>
   );
