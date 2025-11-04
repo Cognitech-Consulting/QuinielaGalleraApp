@@ -1,413 +1,551 @@
-// src/screens/ResultsScreen.js - PREMIUM BRANDED VERSION
-import React, { useEffect, useState } from 'react';
+// src/screens/ResultadosScreen.js
+// Results screen with automatic visibility based on event status
+
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
+  ScrollView,
+  TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { useAuth } from '../context/AuthContext';
-import { pollUserResults } from '../api/apiService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 
-const ResultsScreen = () => {
-  const { user } = useAuth();
+const API_URL = 'https://cognitech.pythonanywhere.com';
+
+export default function ResultsScreen({ navigation }) {
+  const [participaciones, setParticipaciones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [resultsVisible, setResultsVisible] = useState(false);
-  const [predictionResults, setPredictionResults] = useState([]);
-  const [totalPoints, setTotalPoints] = useState(0);
+  const [expandedParticipaciones, setExpandedParticipaciones] = useState({});
 
   useEffect(() => {
-    const stopPolling = pollUserResults(user.user_id, (data, error) => {
-      if (data) {
-        setResultsVisible(data.resultsVisible);
-        setPredictionResults(data.predictionResults || []);
-        setTotalPoints(data.totalPoints || 0);
-        setLoading(false);
-      } else if (error) {
-        console.error('Polling error:', error);
-        setLoading(false);
-      }
-    }, 20000);
+    loadParticipaciones();
+  }, []);
 
-    return () => stopPolling();
-  }, [user.user_id]);
+  const loadParticipaciones = async () => {
+    try {
+      const userData = await AsyncStorage.getItem('user');
+      if (!userData) {
+        setLoading(false);
+        return;
+      }
+
+      const user = JSON.parse(userData);
+      const response = await fetch(
+        `${API_URL}/eventos/api/get-user-ronda-participaciones/?user_id=${user.user_id}`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        // Group by event
+        const grouped = groupByEvent(data.participaciones);
+        setParticipaciones(grouped);
+      }
+    } catch (error) {
+      console.error('Error loading participaciones:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const groupByEvent = (participaciones) => {
+    const grouped = {};
+
+    participaciones.forEach((part) => {
+      const eventoId = part.evento.id;
+      if (!grouped[eventoId]) {
+        grouped[eventoId] = {
+          evento: part.evento,
+          rondas: {},
+        };
+      }
+
+      const rondaId = part.ronda.id;
+      if (!grouped[eventoId].rondas[rondaId]) {
+        grouped[eventoId].rondas[rondaId] = {
+          ronda: part.ronda,
+          participaciones: [],
+        };
+      }
+
+      grouped[eventoId].rondas[rondaId].participaciones.push(part);
+    });
+
+    // Convert to array and sort
+    return Object.values(grouped).map((evento) => ({
+      ...evento,
+      rondas: Object.values(evento.rondas).sort((a, b) => a.ronda.numero - b.ronda.numero),
+    }));
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
+    loadParticipaciones();
   };
 
-  const calculateAccuracy = () => {
-    if (predictionResults.length === 0) return 0;
-    const correct = predictionResults.filter(r => r.correct).length;
-    return Math.round((correct / predictionResults.length) * 100);
+  const toggleParticipacion = (participacionId) => {
+    setExpandedParticipaciones((prev) => ({
+      ...prev,
+      [participacionId]: !prev[participacionId],
+    }));
+  };
+
+  const renderPrediccion = (pred, resultsVisible) => {
+    const getStatusIcon = () => {
+      if (!resultsVisible) return '⏳';
+      if (pred.es_correcta === true) return '✓';
+      if (pred.es_correcta === false) return '✗';
+      return '⏳';
+    };
+
+    const getStatusColor = () => {
+      if (!resultsVisible) return '#FFA500';
+      if (pred.es_correcta === true) return '#2ECC71';
+      if (pred.es_correcta === false) return '#E74C3C';
+      return '#FFA500';
+    };
+
+    const getPrediccionText = () => {
+      if (pred.prediccion === 'equipo1') return pred.equipo1;
+      if (pred.prediccion === 'equipo2') return pred.equipo2;
+      return 'Empate';
+    };
+
+    const getResultadoText = () => {
+      if (!resultsVisible) return 'Evento Finalizado';
+      if (!pred.resultado_real) return 'Pendiente';
+      if (pred.resultado_real === 'equipo1') return pred.equipo1;
+      if (pred.resultado_real === 'equipo2') return pred.equipo2;
+      if (pred.resultado_real === 'tie') return 'Empate';
+      return 'Pendiente';
+    };
+
+    return (
+      <View key={pred.pelea_id} style={styles.prediccionCard}>
+        <View style={styles.prediccionHeader}>
+          <Text style={styles.prediccionTitle}>
+            {pred.equipo1} vs {pred.equipo2}
+          </Text>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
+            <Text style={styles.statusIcon}>{getStatusIcon()}</Text>
+          </View>
+        </View>
+        <View style={styles.prediccionDetails}>
+          <View style={styles.prediccionRow}>
+            <Text style={styles.prediccionLabel}>Tu Predicción:</Text>
+            <Text style={styles.prediccionValue}>{getPrediccionText()}</Text>
+          </View>
+          <View style={styles.prediccionRow}>
+            <Text style={styles.prediccionLabel}>Resultado:</Text>
+            <Text style={[styles.prediccionValue, { color: getStatusColor() }]}>
+              {getResultadoText()}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderParticipacion = (part) => {
+    const isExpanded = expandedParticipaciones[part.participacion_id];
+    
+    // Determine status based on evento.current and ronda_cerrada
+    let statusText;
+    let statusColor;
+    
+    if (!part.evento.current) {
+      // Event is no longer active - hide results
+      statusText = 'Evento Finalizado';
+      statusColor = '#999';
+    } else if (part.ronda_cerrada && part.puntos_obtenidos !== null) {
+      // Round closed and results available - show points
+      statusText = `${part.puntos_obtenidos}/${part.total_peleas} puntos`;
+      statusColor = '#D52B1E';
+    } else {
+      // Round still open or results pending
+      statusText = 'Resultados Pendientes';
+      statusColor = '#FFA500';
+    }
+
+    return (
+      <View key={part.participacion_id} style={styles.participacionCard}>
+        <TouchableOpacity
+          onPress={() => toggleParticipacion(part.participacion_id)}
+          style={styles.participacionHeader}
+        >
+          <View style={styles.participacionInfo}>
+            <Text style={styles.participacionNumero}>
+              Participación #{part.numero_participacion}
+            </Text>
+            <Text style={styles.participacionFecha}>
+              {new Date(part.fecha_participacion).toLocaleDateString('es-GT', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </Text>
+          </View>
+          <View style={styles.participacionStatus}>
+            <Text style={[styles.statusText, { color: statusColor }]}>{statusText}</Text>
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color="#666"
+            />
+          </View>
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={styles.prediccionesContainer}>
+            <Text style={styles.prediccionesTitle}>Tus Predicciones:</Text>
+            {part.predicciones.map((pred) => renderPrediccion(pred, part.results_visible))}
+            
+            {!part.evento.current && (
+              <View style={styles.eventEndedNotice}>
+                <Ionicons name="information-circle" size={20} color="#999" />
+                <Text style={styles.eventEndedText}>
+                  Este evento ha finalizado. Los resultados ya no están disponibles.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderRonda = (rondaData) => {
+    return (
+      <View key={rondaData.ronda.id} style={styles.rondaContainer}>
+        <View style={styles.rondaHeader}>
+          <Text style={styles.rondaTitle}>🥊 Ronda {rondaData.ronda.numero}</Text>
+          <Text style={styles.rondaParticipaciones}>
+            {rondaData.participaciones.length} participación
+            {rondaData.participaciones.length !== 1 ? 'es' : ''}
+          </Text>
+        </View>
+        {rondaData.participaciones.map(renderParticipacion)}
+      </View>
+    );
+  };
+
+  const renderEvento = (eventoData) => {
+    // Show event status badge
+    const isActive = eventoData.evento.current;
+    
+    return (
+      <View key={eventoData.evento.id} style={styles.eventoContainer}>
+        <View style={styles.eventoHeader}>
+          <View style={styles.eventoTitleRow}>
+            <Text style={styles.eventoTitle}>📅 {eventoData.evento.nombre}</Text>
+            {isActive ? (
+              <View style={styles.activeEventBadge}>
+                <Text style={styles.activeEventText}>ACTIVO</Text>
+              </View>
+            ) : (
+              <View style={styles.inactiveEventBadge}>
+                <Text style={styles.inactiveEventText}>FINALIZADO</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.eventoFecha}>{eventoData.evento.fecha}</Text>
+        </View>
+        {eventoData.rondas.map(renderRonda)}
+      </View>
+    );
   };
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#D52B1E" />
         <Text style={styles.loadingText}>Cargando resultados...</Text>
       </View>
     );
   }
 
-  if (!resultsVisible) {
+  if (participaciones.length === 0) {
     return (
-      <View style={styles.hiddenResultsContainer}>
-        <Text style={styles.hiddenIcon}>🔒</Text>
-        <Text style={styles.hiddenResultsTitle}>Resultados Ocultos</Text>
-        <Text style={styles.hiddenResultsText}>
-          Los resultados no están disponibles en este momento.
-        </Text>
-        <Text style={styles.hiddenResultsSubtext}>
-          El administrador los hará visibles próximamente.
+      <View style={styles.centerContainer}>
+        <Ionicons name="clipboard-outline" size={80} color="#ccc" />
+        <Text style={styles.emptyTitle}>No tienes participaciones aún</Text>
+        <Text style={styles.emptyText}>
+          Participa en las rondas activas para ver tus resultados aquí
         </Text>
       </View>
     );
   }
 
-  const correctCount = predictionResults.filter(r => r.correct).length;
-  const incorrectCount = predictionResults.length - correctCount;
-  const accuracy = calculateAccuracy();
-
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={['#D52B1E']}
+        />
+      }
+    >
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Mis Resultados</Text>
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Puntos</Text>
-            <Text style={styles.statValue}>{totalPoints}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Precisión</Text>
-            <Text style={styles.statValue}>{accuracy}%</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Correctas</Text>
-            <Text style={[styles.statValue, styles.correctValue]}>{correctCount}</Text>
-          </View>
-        </View>
+        <Text style={styles.headerSubtitle}>
+          Los resultados están visibles mientras el evento esté activo
+        </Text>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        {predictionResults.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyEmoji}>📊</Text>
-            <Text style={styles.emptyText}>
-              No hay predicciones para mostrar.
-            </Text>
-          </View>
-        ) : (
-          predictionResults.map((result, index) => (
-            <View
-              key={result.pelea_id || index}
-              style={[
-                styles.resultCard,
-                result.correct ? styles.resultCardCorrect : styles.resultCardIncorrect,
-              ]}
-            >
-              <View style={styles.resultHeader}>
-                <Text style={styles.matchNumber}>Pelea #{index + 1}</Text>
-                {result.correct ? (
-                  <View style={styles.correctBadge}>
-                    <Text style={styles.badgeText}>✓ Correcto</Text>
-                  </View>
-                ) : (
-                  <View style={styles.incorrectBadge}>
-                    <Text style={styles.badgeText}>✗ Incorrecto</Text>
-                  </View>
-                )}
-              </View>
+      {participaciones.map(renderEvento)}
 
-              <View style={styles.matchInfo}>
-                <Text style={styles.matchTeams}>
-                  {result.equipo1} <Text style={styles.vs}>VS</Text> {result.equipo2}
-                </Text>
-              </View>
-
-              <View style={styles.resultDetails}>
-                <View style={styles.predictionRow}>
-                  <View style={styles.predictionLabel}>
-                    <Text style={styles.predictionLabelText}>Tu predicción</Text>
-                  </View>
-                  <Text style={styles.predictionValue}>
-                    {result.prediccion === 'equipo1' && result.equipo1}
-                    {result.prediccion === 'equipo2' && result.equipo2}
-                    {result.prediccion === 'empate' && 'Empate'}
-                  </Text>
-                </View>
-
-                <View style={styles.resultRow}>
-                  <View style={styles.resultLabel}>
-                    <Text style={styles.resultLabelText}>Resultado real</Text>
-                  </View>
-                  <Text style={[styles.resultValue, result.correct && styles.resultValueCorrect]}>
-                    {result.resultado === 'equipo1' && result.equipo1}
-                    {result.resultado === 'equipo2' && result.equipo2}
-                    {result.resultado === 'tie' && 'Empate'}
-                    {!result.resultado && 'Pendiente'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ))
-        )}
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            🔄 Actualización automática cada 20 segundos
-          </Text>
-        </View>
-      </ScrollView>
-    </View>
+      <View style={styles.bottomPadding} />
+    </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#f5f5f5',
   },
-  loadingContainer: {
+  centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    padding: 20,
   },
   loadingText: {
     marginTop: 15,
     fontSize: 16,
     color: '#666',
-    fontWeight: '600',
   },
-  hiddenResultsContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 30,
-    backgroundColor: '#F5F5F5',
-  },
-  hiddenIcon: {
-    fontSize: 80,
-    marginBottom: 20,
-  },
-  hiddenResultsTitle: {
-    fontSize: 24,
-    color: '#1a1a1a',
-    textAlign: 'center',
+  emptyTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginTop: 20,
+    color: '#333',
   },
-  hiddenResultsText: {
-    fontSize: 16,
+  emptyText: {
+    fontSize: 14,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 8,
-  },
-  hiddenResultsSubtext: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
+    marginTop: 10,
   },
   header: {
     backgroundColor: '#D52B1E',
-    paddingTop: 60,
-    paddingBottom: 25,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    padding: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
   headerTitle: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFF',
-    marginBottom: 20,
+    color: '#fff',
+    textAlign: 'center',
   },
-  statsContainer: {
+  headerSubtitle: {
+    fontSize: 13,
+    color: '#fff',
+    textAlign: 'center',
+    marginTop: 5,
+    opacity: 0.9,
+  },
+  eventoContainer: {
+    marginTop: 20,
+    marginHorizontal: 15,
+  },
+  eventoHeader: {
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  eventoTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    padding: 12,
-    borderRadius: 12,
     alignItems: 'center',
-    marginHorizontal: 4,
+    marginBottom: 5,
   },
-  statLabel: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 22,
+  eventoTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#FFF',
-  },
-  correctValue: {
-    color: '#FFC107',
-  },
-  scrollView: {
+    color: '#333',
     flex: 1,
   },
-  scrollContent: {
-    padding: 15,
-    paddingTop: 20,
+  activeEventBadge: {
+    backgroundColor: '#2ECC71',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  emptyContainer: {
-    padding: 50,
-    alignItems: 'center',
+  activeEventText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
-  emptyEmoji: {
-    fontSize: 60,
+  inactiveEventBadge: {
+    backgroundColor: '#999',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  inactiveEventText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  eventoFecha: {
+    fontSize: 14,
+    color: '#666',
+  },
+  rondaContainer: {
     marginBottom: 15,
   },
-  emptyText: {
+  rondaHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  rondaTitle: {
     fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
+    fontWeight: 'bold',
+    color: '#D52B1E',
   },
-  resultCard: {
-    backgroundColor: '#FFF',
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 15,
-    borderLeftWidth: 4,
+  rondaParticipaciones: {
+    fontSize: 12,
+    color: '#666',
+  },
+  participacionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'hidden',
   },
-  resultCardCorrect: {
-    borderLeftColor: '#2ECC71',
-  },
-  resultCardIncorrect: {
-    borderLeftColor: '#E74C3C',
-  },
-  resultHeader: {
+  participacionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    padding: 15,
   },
-  matchNumber: {
-    fontSize: 13,
+  participacionInfo: {
+    flex: 1,
+  },
+  participacionNumero: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 3,
+  },
+  participacionFecha: {
+    fontSize: 12,
     color: '#999',
+  },
+  participacionStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusText: {
+    fontSize: 14,
     fontWeight: '600',
   },
-  correctBadge: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+  prediccionesContainer: {
+    padding: 15,
+    paddingTop: 0,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
   },
-  incorrectBadge: {
-    backgroundColor: '#FFEBEE',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  matchInfo: {
-    marginBottom: 12,
-  },
-  matchTeams: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-  },
-  vs: {
-    color: '#D52B1E',
+  prediccionesTitle: {
     fontSize: 14,
-  },
-  resultDetails: {
-    backgroundColor: '#F9F9F9',
-    borderRadius: 10,
-    padding: 12,
-  },
-  predictionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    fontWeight: 'bold',
+    color: '#666',
     marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
   },
-  resultRow: {
+  prediccionCard: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ddd',
+  },
+  prediccionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  prediccionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  statusBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusIcon: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  prediccionDetails: {
+    gap: 5,
+  },
+  prediccionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  predictionLabel: {
-    backgroundColor: '#E0E0E0',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  predictionLabelText: {
+  prediccionLabel: {
     fontSize: 12,
     color: '#666',
-    fontWeight: '600',
   },
-  predictionValue: {
-    fontSize: 14,
+  prediccionValue: {
+    fontSize: 13,
+    fontWeight: '600',
     color: '#333',
-    fontWeight: '600',
   },
-  resultLabel: {
-    backgroundColor: '#D52B1E',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  resultLabelText: {
-    fontSize: 12,
-    color: '#FFF',
-    fontWeight: '600',
-  },
-  resultValue: {
-    fontSize: 14,
-    color: '#D52B1E',
-    fontWeight: 'bold',
-  },
-  resultValueCorrect: {
-    color: '#2ECC71',
-  },
-  footer: {
-    padding: 20,
+  eventEndedNotice: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+    gap: 10,
   },
-  footerText: {
+  eventEndedText: {
+    flex: 1,
     fontSize: 12,
-    color: '#999',
-    textAlign: 'center',
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  bottomPadding: {
+    height: 30,
   },
 });
-
-export default ResultsScreen;

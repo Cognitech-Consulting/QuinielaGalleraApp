@@ -1,10 +1,9 @@
-// src/api/apiService.js
+// src/api/apiService.js - FINAL VERIFIED VERSION
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BASE_URL = 'https://cognitech.pythonanywhere.com';
 
-// Create axios instance with default config
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
@@ -13,7 +12,7 @@ const api = axios.create({
   },
 });
 
-// ==================== AUTH APIs ====================
+// ==================== AUTHENTICATION APIs ====================
 
 export const registerUser = async (userData) => {
   try {
@@ -22,9 +21,7 @@ export const registerUser = async (userData) => {
   } catch (error) {
     console.error('Registration API Error:', error.response?.data || error.message);
     
-    // Return detailed error information
     if (error.response?.data) {
-      // Django typically returns errors in this format
       throw error.response.data;
     } else if (error.message) {
       throw { error: error.message };
@@ -34,12 +31,14 @@ export const registerUser = async (userData) => {
   }
 };
 
-export const loginUser = async (user_id, password) => {
+// ⭐ FIXED: loginUser expects credentials object
+export const loginUser = async (credentials) => {
   try {
-    const response = await api.post('/api/accounts/login/', {
-      user_id,
-      password,
-    });
+    console.log('Login attempt with:', credentials); // Debug log
+    
+    const response = await api.post('/api/accounts/login/', credentials);
+    
+    console.log('Login response:', response.data); // Debug log
     
     // Save user_id to AsyncStorage
     if (response.data.user_id) {
@@ -48,7 +47,8 @@ export const loginUser = async (user_id, password) => {
     
     return response.data;
   } catch (error) {
-    throw error.response?.data || error.message;
+    console.error('Login API Error:', error.response?.data || error.message);
+    throw error.response?.data || { error: error.message || 'Login failed' };
   }
 };
 
@@ -70,7 +70,7 @@ export const logout = async () => {
   }
 };
 
-// ==================== USER APIs ====================
+// ==================== USER TICKET APIs ====================
 
 export const getUserTickets = async (user_id) => {
   try {
@@ -97,11 +97,21 @@ export const useTicket = async (user_id, event_id) => {
 
 // ==================== EVENT APIs ====================
 
+// NEW: Get all active events
+export const getAllActiveEvents = async () => {
+  try {
+    const response = await api.get('/eventos/api/all-active-events/');
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};
+
+// OLD: Keep for backwards compatibility
 export const getCurrentEvent = async () => {
   try {
     const response = await api.get('/eventos/api/current-event/');
     
-    // Save event_id to AsyncStorage
     if (response.data.id) {
       await AsyncStorage.setItem('active_event_id', response.data.id.toString());
     }
@@ -127,11 +137,10 @@ export const checkParticipation = async (user_id, event_id) => {
 
 export const submitPredictions = async (user_id, event_id, predictions) => {
   try {
-    // Format the payload to match backend expectations
     const payload = {
       user_id,
       event_id,
-      predictions // This should be an array of { pelea_id, prediccion }
+      predictions
     };
     
     console.log('Submitting predictions:', JSON.stringify(payload, null, 2));
@@ -155,7 +164,18 @@ export const getUserResults = async (user_id) => {
   }
 };
 
-// ==================== RANKINGS API ====================
+export const hasSubmittedPredictions = async (user_id, event_id) => {
+  try {
+    const response = await api.get('/eventos/api/has-submitted-predictions/', {
+      params: { user_id, event_id },
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};
+
+// ==================== RANKING APIs ====================
 
 export const getRankings = async (event_id) => {
   try {
@@ -168,116 +188,104 @@ export const getRankings = async (event_id) => {
 
 // ==================== POLLING UTILITIES ====================
 
-/**
- * Set up polling for current event updates
- * @param {Function} callback - Function to call with updated data
- * @param {number} interval - Polling interval in milliseconds (default: 15000 = 15 seconds)
- * @returns {Function} - Function to stop polling
- */
 export const pollCurrentEvent = (callback, interval = 15000) => {
-  let isActive = true;
-  
-  const poll = async () => {
-    if (!isActive) return;
-    
+  let isPolling = true;
+
+  const fetchData = async () => {
+    if (!isPolling) return;
+
     try {
       const data = await getCurrentEvent();
       callback(data, null);
     } catch (error) {
       callback(null, error);
     }
-    
-    if (isActive) {
-      setTimeout(poll, interval);
+
+    if (isPolling) {
+      setTimeout(fetchData, interval);
     }
   };
-  
-  // Start polling
-  poll();
-  
-  // Return cleanup function
+
+  fetchData();
+
   return () => {
-    isActive = false;
+    isPolling = false;
   };
 };
 
-/**
- * Set up polling for user results
- * @param {string} user_id - User ID
- * @param {Function} callback - Function to call with updated data
- * @param {number} interval - Polling interval in milliseconds (default: 20000 = 20 seconds)
- * @returns {Function} - Function to stop polling
- */
+export const pollAllActiveEvents = (callback, interval = 15000) => {
+  let isPolling = true;
+
+  const fetchData = async () => {
+    if (!isPolling) return;
+
+    try {
+      const data = await getAllActiveEvents();
+      callback(data, null);
+    } catch (error) {
+      callback(null, error);
+    }
+
+    if (isPolling) {
+      setTimeout(fetchData, interval);
+    }
+  };
+
+  fetchData();
+
+  return () => {
+    isPolling = false;
+  };
+};
+
 export const pollUserResults = (user_id, callback, interval = 20000) => {
-  let isActive = true;
-  
-  const poll = async () => {
-    if (!isActive) return;
-    
+  let isPolling = true;
+
+  const fetchData = async () => {
+    if (!isPolling) return;
+
     try {
       const data = await getUserResults(user_id);
       callback(data, null);
     } catch (error) {
       callback(null, error);
     }
-    
-    if (isActive) {
-      setTimeout(poll, interval);
+
+    if (isPolling) {
+      setTimeout(fetchData, interval);
     }
   };
-  
-  // Start polling
-  poll();
-  
-  // Return cleanup function
+
+  fetchData();
+
   return () => {
-    isActive = false;
+    isPolling = false;
   };
 };
 
-/**
- * Set up polling for rankings
- * @param {number} event_id - Event ID
- * @param {Function} callback - Function to call with updated data
- * @param {number} interval - Polling interval in milliseconds (default: 30000 = 30 seconds)
- * @returns {Function} - Function to stop polling
- */
 export const pollRankings = (event_id, callback, interval = 30000) => {
-  let isActive = true;
-  
-  const poll = async () => {
-    if (!isActive) return;
-    
+  let isPolling = true;
+
+  const fetchData = async () => {
+    if (!isPolling) return;
+
     try {
       const data = await getRankings(event_id);
       callback(data, null);
     } catch (error) {
       callback(null, error);
     }
-    
-    if (isActive) {
-      setTimeout(poll, interval);
+
+    if (isPolling) {
+      setTimeout(fetchData, interval);
     }
   };
-  
-  // Start polling
-  poll();
-  
-  // Return cleanup function
+
+  fetchData();
+
   return () => {
-    isActive = false;
+    isPolling = false;
   };
 };
 
 export default api;
-
-export const hasSubmittedPredictions = async (user_id, event_id) => {
-  try {
-    const response = await api.get('/eventos/api/has-submitted-predictions/', {
-      params: { user_id, event_id },
-    });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
-};

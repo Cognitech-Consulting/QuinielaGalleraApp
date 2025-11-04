@@ -1,4 +1,4 @@
-// src/context/AuthContext.js
+// src/context/AuthContext.js - FIXED VERSION WITH TICKET SUPPORT
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loginUser, registerUser, logout as apiLogout, getCurrentUserId } from '../api/apiService';
@@ -16,9 +16,11 @@ export const AuthProvider = ({ children }) => {
 
   const checkUser = async () => {
     try {
-      const userId = await getCurrentUserId();
-      if (userId) {
-        setUser({ user_id: userId });
+      // ✅ Load full user object from AsyncStorage
+      const userData = await AsyncStorage.getItem('user');
+      if (userData) {
+        const parsedUser = JSON.parse(userData);
+        setUser(parsedUser);
       }
     } catch (error) {
       console.error('Error checking user:', error);
@@ -29,11 +31,43 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (user_id, password) => {
     try {
-      const response = await loginUser(user_id, password);
-      setUser({ user_id: response.user_id });
+      // Call login API
+      const response = await loginUser({ user_id, password });
+      
+      console.log('Login response:', response); // Debug log
+      
+      // ✅ FIXED: Save complete user data including event_tickets
+      const userData = {
+        user_id: response.user_id,
+        event_tickets: response.event_tickets || 0,
+        nombre: response.nombre || '',
+        apellido: response.apellido || ''
+      };
+      
+      // Save to AsyncStorage
+      await AsyncStorage.setItem('user', JSON.stringify(userData));
+      
+      // Set user state
+      setUser(userData);
+      
+      console.log('User data saved:', userData); // Debug log
+      
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.error || 'Login failed' };
+      console.error('Login error in AuthContext:', error);
+      
+      // Handle different error formats
+      let errorMessage = 'Login failed';
+      
+      if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error.error) {
+        errorMessage = error.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      return { success: false, error: errorMessage };
     }
   };
 
@@ -82,6 +116,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ✅ NEW: Function to update user data (e.g., after using a ticket)
+  const updateUser = async (updates) => {
+    try {
+      const updatedUser = { ...user, ...updates };
+      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    } catch (error) {
+      console.error('Error updating user:', error);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -90,6 +135,7 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        updateUser, // ✅ Export this for updating tickets after use
       }}
     >
       {children}

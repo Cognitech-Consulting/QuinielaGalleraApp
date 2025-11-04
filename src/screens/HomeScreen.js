@@ -1,4 +1,4 @@
-// src/screens/HomeScreen.js - LOCKED AFTER SUBMISSION (FIXED)
+// src/screens/HomeScreen.js - UPDATED VERSION
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -6,101 +6,48 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
-  ActivityIndicator,
   RefreshControl,
-  Animated,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import {
-  getCurrentEvent,
-  pollCurrentEvent,
-  getUserTickets,
-  checkParticipation,
-  useTicket,
-  hasSubmittedPredictions,
-} from '../api/apiService';
+import { getAllActiveEvents, getUserTickets, pollAllActiveEvents } from '../api/apiService';
 
 const HomeScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
-  const [event, setEvent] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [tickets, setTickets] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [tickets, setTickets] = useState(0);
-  const [hasParticipated, setHasParticipated] = useState(false);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [pulseAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
     loadInitialData();
 
-    // Pulse animation for live indicator
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.2,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-
-    const stopPolling = pollCurrentEvent((data, error) => {
-      if (data) {
-        setEvent(data);
-      } else if (error) {
-        console.error('Polling error:', error);
+    // Start polling for events (updates every 15 seconds)
+    const stopPolling = pollAllActiveEvents((data, error) => {
+      if (data && data.events) {
+        setEvents(data.events);
       }
     }, 15000);
 
-    return () => {
-      stopPolling();
-    };
+    return () => stopPolling();
   }, []);
-
-  // CRITICAL FIX: Reload data when screen comes into focus
-  // This ensures hasSubmitted is updated after returning from Predictions screen
-  useFocusEffect(
-    React.useCallback(() => {
-      console.log('HomeScreen focused - reloading data');
-      loadInitialData();
-    }, [])
-  );
 
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const eventData = await getCurrentEvent();
-      setEvent(eventData);
 
+      // Load user tickets
       const ticketsData = await getUserTickets(user.user_id);
       setTickets(ticketsData.event_tickets);
 
-      const participationData = await checkParticipation(user.user_id, eventData.id);
-      setHasParticipated(participationData.participated);
+      // Load all active events
+      const eventsData = await getAllActiveEvents();
+      setEvents(eventsData.events || []);
 
-      // CRITICAL: Check if user has submitted predictions
-      if (participationData.participated) {
-        try {
-          const submittedData = await hasSubmittedPredictions(user.user_id, eventData.id);
-          console.log('Submission check:', submittedData);
-          setHasSubmitted(submittedData.has_submitted);
-        } catch (error) {
-          console.error('Error checking submission:', error);
-          setHasSubmitted(false);
-        }
-      } else {
-        setHasSubmitted(false);
-      }
     } catch (error) {
       console.error('Error loading data:', error);
-      Alert.alert('Error', 'No se pudo cargar el evento actual');
+      Alert.alert('Error', 'No se pudieron cargar los eventos');
     } finally {
       setLoading(false);
     }
@@ -112,37 +59,9 @@ const HomeScreen = ({ navigation }) => {
     setRefreshing(false);
   };
 
-  const handleParticipate = async () => {
-    if (tickets <= 0) {
-      Alert.alert(
-        'Sin Tickets',
-        'No tienes tickets disponibles para participar en este evento.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    Alert.alert(
-      'Usar Ticket',
-      '¿Deseas usar 1 ticket para participar en este evento?\n\n✓ Hacer predicciones\n✓ Enviar predicciones\n✓ Ver resultados',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Usar Ticket',
-          onPress: async () => {
-            try {
-              await useTicket(user.user_id, event.id);
-              setTickets(tickets - 1);
-              setHasParticipated(true);
-              setHasSubmitted(false); // User just participated, hasn't submitted yet
-              navigation.navigate('Predictions', { event });
-            } catch (error) {
-              Alert.alert('Error', error.error || 'No se pudo usar el ticket');
-            }
-          },
-        },
-      ]
-    );
+  const handleEventPress = (event) => {
+    // Navigate to event detail screen
+    navigation.navigate('EventDetail', { event });
   };
 
   if (loading) {
@@ -152,171 +71,132 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.logoEmoji}>🐓</Text>
         </View>
         <ActivityIndicator size="large" color="#D52B1E" style={{ marginTop: 20 }} />
-        <Text style={styles.loadingText}>Cargando evento...</Text>
-      </View>
-    );
-  }
-
-  if (!event) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyEmoji}>😴</Text>
-        <Text style={styles.emptyTitle}>Sin Eventos Activos</Text>
-        <Text style={styles.emptyText}>No hay eventos en este momento</Text>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-          <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
-        </TouchableOpacity>
+        <Text style={styles.loadingText}>Cargando eventos...</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.welcomeText}>Bienvenido</Text>
-            <Text style={styles.userIdText}>{user.user_id}</Text>
+          <View style={styles.logoSection}>
+            <View style={styles.logoCircle}>
+              <Text style={styles.logoEmoji}>🐓</Text>
+            </View>
+            <Text style={styles.appTitle}>Quiniela Gallera</Text>
           </View>
+          <TouchableOpacity onPress={logout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Salir</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* User Info */}
+        <View style={styles.userInfo}>
+          <Text style={styles.userName}>{user.nombre || user.user_id}</Text>
           <View style={styles.ticketsContainer}>
-            <Text style={styles.ticketsLabel}>🎫 Tickets</Text>
-            <Text style={styles.ticketsCount}>{tickets}</Text>
+            <Text style={styles.ticketEmoji}>🎫</Text>
+            <Text style={styles.ticketsText}>{tickets} tickets</Text>
           </View>
         </View>
       </View>
 
-      {/* Event Card */}
-      <View style={styles.eventCard}>
-        <View style={styles.liveIndicator}>
-          <Animated.View
-            style={[
-              styles.liveDot,
-              { transform: [{ scale: pulseAnim }] },
-            ]}
-          />
-          <Text style={styles.liveText}>EN VIVO</Text>
-        </View>
-        
-        <View style={styles.eventHeader}>
-          <Text style={styles.eventEmoji}>🏆</Text>
-          <View style={styles.eventHeaderText}>
-            <Text style={styles.eventName}>{event.nombre}</Text>
-            <Text style={styles.eventDate}>📅 {event.fecha}</Text>
-          </View>
-        </View>
+      {/* Events List */}
+      <ScrollView
+        style={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#D52B1E']} />
+        }
+      >
+        <Text style={styles.sectionTitle}>📅 Eventos Activos</Text>
 
-        <View style={styles.eventDetails}>
-          <View style={styles.eventDetailRow}>
-            <Text style={styles.eventDetailIcon}>📍</Text>
-            <Text style={styles.eventDetailText}>{event.ubicacion}</Text>
-          </View>
-          <View style={styles.eventDetailRow}>
-            <Text style={styles.eventDetailIcon}>🎯</Text>
-            <Text style={styles.eventDetailText}>
-              {event.rondas?.length || 0} Rondas
-            </Text>
-          </View>
-          <View style={styles.eventDetailRow}>
-            <Text style={styles.eventDetailIcon}>⚔️</Text>
-            <Text style={styles.eventDetailText}>
-              {event.rondas?.reduce((total, ronda) => total + (ronda.peleas?.length || 0), 0) || 0} Peleas
-            </Text>
-          </View>
-        </View>
-
-        {/* Action Button - SMART LOGIC WITH FIX */}
-        {!hasParticipated ? (
-          // User hasn't participated yet
-          <TouchableOpacity
-            style={[styles.participateButton, tickets <= 0 && styles.buttonDisabled]}
-            onPress={handleParticipate}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.participateButtonText}>
-              {tickets > 0 ? 'Participar (1 Ticket)' : 'Sin Tickets'}
-            </Text>
-          </TouchableOpacity>
-        ) : hasSubmitted ? (
-          // User has participated AND submitted - LOCKED (THIS WILL NOW SHOW CORRECTLY)
-          <View style={styles.lockedCard}>
-            <View style={styles.lockedHeader}>
-              <Text style={styles.lockedIcon}>🔒</Text>
-              <Text style={styles.lockedTitle}>Predicciones Enviadas</Text>
-            </View>
-            <Text style={styles.lockedText}>
-              Ya enviaste tus predicciones para este evento.
-            </Text>
-            <TouchableOpacity
-              style={styles.viewResultsButton}
-              onPress={() => navigation.navigate('Results')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.viewResultsButtonText}>Ver Mis Resultados →</Text>
-            </TouchableOpacity>
+        {events.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyEmoji}>😴</Text>
+            <Text style={styles.emptyText}>No hay eventos activos</Text>
+            <Text style={styles.emptySubtext}>Los eventos aparecerán aquí cuando estén disponibles</Text>
           </View>
         ) : (
-          // User has participated but NOT submitted yet
-          <TouchableOpacity
-            style={styles.continueButton}
-            onPress={() => navigation.navigate('Predictions', { event })}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.continueButtonText}>Continuar Predicciones →</Text>
-          </TouchableOpacity>
+          events.map((event) => (
+            <TouchableOpacity
+              key={event.id}
+              style={styles.eventCard}
+              onPress={() => handleEventPress(event)}
+            >
+              <View style={styles.eventHeader}>
+                <Text style={styles.eventName}>{event.nombre}</Text>
+                <Text style={styles.roundCount}>
+                  {event.rondas.length} {event.rondas.length === 1 ? 'Ronda' : 'Rondas'}
+                </Text>
+              </View>
+
+              <View style={styles.eventDetails}>
+                <View style={styles.eventDetail}>
+                  <Text style={styles.detailIcon}>📍</Text>
+                  <Text style={styles.detailText}>{event.ubicacion}</Text>
+                </View>
+                <View style={styles.eventDetail}>
+                  <Text style={styles.detailIcon}>📅</Text>
+                  <Text style={styles.detailText}>{event.fecha}</Text>
+                </View>
+              </View>
+
+              {/* Show active rounds count */}
+              <View style={styles.activeRoundsContainer}>
+                {event.rondas.filter(r => r.active).length > 0 ? (
+                  <Text style={styles.activeRoundsText}>
+                    🟢 {event.rondas.filter(r => r.active).length} ronda(s) activa(s)
+                  </Text>
+                ) : (
+                  <Text style={styles.inactiveRoundsText}>
+                    🔴 Sin rondas activas
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.viewDetailsButton}>
+                <Text style={styles.viewDetailsText}>Ver Detalles →</Text>
+              </View>
+            </TouchableOpacity>
+          ))
         )}
+
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
+
+      {/* Bottom Navigation */}
+      <View style={styles.navbar}>
+        <TouchableOpacity style={styles.navItemActive}>
+          <Text style={styles.navIconActive}>🏠</Text>
+          <Text style={styles.navTextActive}>Inicio</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => navigation.navigate('Results')}
+        >
+          <Text style={styles.navIcon}>📊</Text>
+          <Text style={styles.navText}>Resultados</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => navigation.navigate('Rankings')}
+        >
+          <Text style={styles.navIcon}>🏆</Text>
+          <Text style={styles.navText}>Rankings</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => navigation.navigate('Profile')}
+        >
+          <Text style={styles.navIcon}>👤</Text>
+          <Text style={styles.navText}>Perfil</Text>
+        </TouchableOpacity>
       </View>
-
-      {/* Quick Access */}
-      <View style={styles.quickAccessSection}>
-        <Text style={styles.sectionTitle}>Acceso Rápido</Text>
-        <View style={styles.quickAccess}>
-          <TouchableOpacity
-            style={styles.quickButton}
-            onPress={() => navigation.navigate('Results')}
-            activeOpacity={0.7}
-          >
-            <View style={styles.quickButtonIconContainer}>
-              <Text style={styles.quickButtonIcon}>📊</Text>
-            </View>
-            <Text style={styles.quickButtonText}>Mis Resultados</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickButton}
-            onPress={() => navigation.navigate('Rankings')}
-            activeOpacity={0.7}
-          >
-            <View style={styles.quickButtonIconContainer}>
-              <Text style={styles.quickButtonIcon}>🏆</Text>
-            </View>
-            <Text style={styles.quickButtonText}>Rankings</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickButton}
-            onPress={() => navigation.navigate('Profile')}
-            activeOpacity={0.7}
-          >
-            <View style={styles.quickButtonIconContainer}>
-              <Text style={styles.quickButtonIcon}>👤</Text>
-            </View>
-            <Text style={styles.quickButtonText}>Perfil</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Logout Button */}
-      <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-        <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
-      </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 };
 
@@ -325,9 +205,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
-  scrollContent: {
-    paddingBottom: 30,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -335,306 +212,229 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   logoCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#FFF',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 6,
+    elevation: 5,
   },
   logoEmoji: {
-    fontSize: 50,
+    fontSize: 40,
   },
   loadingText: {
-    marginTop: 20,
+    marginTop: 16,
     fontSize: 16,
     color: '#666',
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#F5F5F5',
-  },
-  emptyEmoji: {
-    fontSize: 80,
-    marginBottom: 20,
-  },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 10,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 30,
+    fontWeight: '500',
   },
   header: {
     backgroundColor: '#D52B1E',
     paddingTop: 50,
-    paddingBottom: 20,
     paddingHorizontal: 20,
+    paddingBottom: 20,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 20,
   },
-  welcomeText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '500',
+  logoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  userIdText: {
-    fontSize: 24,
+  appTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginLeft: 12,
+  },
+  logoutButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  logoutText: {
+    color: '#FFF',
+    fontWeight: '600',
+  },
+  userInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  userName: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#FFF',
   },
   ticketsContainer: {
-    backgroundColor: '#FFC107',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  ticketsLabel: {
-    fontSize: 11,
-    color: '#1a1a1a',
+  ticketEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  ticketsText: {
+    color: '#FFF',
+    fontSize: 16,
     fontWeight: '600',
   },
-  ticketsCount: {
-    fontSize: 28,
+  content: {
+    flex: 1,
+    padding: 20,
+  },
+  sectionTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#1a1a1a',
-    textAlign: 'center',
+    color: '#333',
+    marginBottom: 16,
   },
   eventCard: {
     backgroundColor: '#FFF',
-    marginHorizontal: 20,
-    marginTop: -30,
+    borderRadius: 16,
     padding: 20,
-    borderRadius: 20,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  liveIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  liveDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#00FF00',
-    marginRight: 8,
-  },
-  liveText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#00FF00',
-    letterSpacing: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   eventHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
-  },
-  eventEmoji: {
-    fontSize: 40,
-    marginRight: 15,
-  },
-  eventHeaderText: {
-    flex: 1,
+    marginBottom: 12,
   },
   eventName: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 5,
+    color: '#333',
+    flex: 1,
   },
-  eventDate: {
+  roundCount: {
     fontSize: 14,
-    color: '#666',
+    fontWeight: '600',
+    color: '#D52B1E',
+    backgroundColor: '#FFE5E5',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   eventDetails: {
-    backgroundColor: '#F8F8F8',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 20,
+    marginBottom: 12,
   },
-  eventDetailRow: {
+  eventDetail: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
   },
-  eventDetailIcon: {
-    fontSize: 18,
-    marginRight: 10,
-  },
-  eventDetailText: {
-    fontSize: 15,
-    color: '#333',
-    fontWeight: '500',
-  },
-  participateButton: {
-    backgroundColor: '#D52B1E',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#D52B1E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  continueButton: {
-    backgroundColor: '#2ECC71',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#2ECC71',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  buttonDisabled: {
-    backgroundColor: '#999',
-    opacity: 0.6,
-  },
-  participateButtonText: {
-    color: '#FFF',
+  detailIcon: {
     fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
+    marginRight: 8,
   },
-  continueButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-  lockedCard: {
-    backgroundColor: '#FFF9E6',
-    padding: 15,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#FFC107',
-  },
-  lockedHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  lockedIcon: {
-    fontSize: 24,
-    marginRight: 10,
-  },
-  lockedTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-  },
-  lockedText: {
+  detailText: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 15,
   },
-  viewResultsButton: {
-    backgroundColor: '#D52B1E',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
+  activeRoundsContainer: {
+    marginBottom: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
   },
-  viewResultsButtonText: {
-    color: '#FFF',
+  activeRoundsText: {
     fontSize: 14,
-    fontWeight: 'bold',
-  },
-  quickAccessSection: {
-    marginTop: 30,
-    marginHorizontal: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 15,
-  },
-  quickAccess: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  quickButton: {
-    backgroundColor: '#FFF',
-    padding: 15,
-    borderRadius: 15,
-    alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  quickButtonIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  quickButtonIcon: {
-    fontSize: 24,
-  },
-  quickButtonText: {
-    fontSize: 12,
-    color: '#333',
-    textAlign: 'center',
     fontWeight: '600',
+    color: '#28a745',
   },
-  logoutButton: {
-    backgroundColor: '#1a1a1a',
-    marginHorizontal: 20,
-    marginTop: 30,
-    padding: 16,
-    borderRadius: 12,
+  inactiveRoundsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#999',
+  },
+  viewDetailsButton: {
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#333',
+    paddingTop: 8,
   },
-  logoutButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
+  viewDetailsText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#D52B1E',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyEmoji: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+  },
+  bottomSpacer: {
+    height: 20,
+  },
+  navbar: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    paddingBottom: 10,
+    paddingTop: 10,
+  },
+  navItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  navItemActive: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  navIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+    opacity: 0.5,
+  },
+  navIconActive: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  navText: {
+    fontSize: 12,
+    color: '#999',
+  },
+  navTextActive: {
+    fontSize: 12,
+    color: '#D52B1E',
+    fontWeight: '600',
   },
 });
 

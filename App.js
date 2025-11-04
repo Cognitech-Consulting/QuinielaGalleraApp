@@ -1,4 +1,4 @@
-// App.js
+// App.js - WITH RoundPredictionsScreen
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -9,6 +9,8 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import LoginScreen from './src/screens/LoginScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import EventDetailScreen from './src/screens/EventDetailScreen';
+import RoundPredictionsScreen from './src/screens/RoundPredictionsScreen'; // ⭐ NEW
 import PredictionsScreen from './src/screens/PredictionsScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 import RankingsScreen from './src/screens/RankingsScreen';
@@ -16,81 +18,73 @@ import ProfileScreen from './src/screens/ProfileScreen';
 
 const Stack = createNativeStackNavigator();
 
-// Auth Navigator (Login, SignUp)
 function AuthNavigator() {
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
     </Stack.Navigator>
   );
 }
 
-// Main App Navigator (Home, Predictions, Results, Rankings, Profile)
 function AppNavigator() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: '#D52B1E',
-        },
+        headerStyle: { backgroundColor: '#D52B1E' },
         headerTintColor: '#FFF',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
+        headerTitleStyle: { fontWeight: 'bold' },
       }}
     >
       <Stack.Screen 
         name="Home" 
         component={HomeScreen}
-        options={{
-          title: 'Quiniela Gallera',
-          headerShown: false,
-        }}
+        options={{ title: 'Quiniela Gallera', headerShown: false }}
       />
+      
+      <Stack.Screen 
+        name="EventDetail" 
+        component={EventDetailScreen}
+        options={{ title: 'Detalles del Evento', headerShown: false }}
+      />
+      
+      {/* ⭐ NEW: Round-based predictions screen */}
+      <Stack.Screen 
+        name="RoundPredictions" 
+        component={RoundPredictionsScreen}
+        options={{ title: 'Predicciones de Ronda', headerShown: false }}
+      />
+      
       <Stack.Screen 
         name="Predictions" 
         component={PredictionsScreen}
-        options={{
-          title: 'Hacer Predicciones',
-        }}
+        options={{ title: 'Hacer Predicciones' }}
       />
       <Stack.Screen 
         name="Results" 
         component={ResultsScreen}
-        options={{
-          title: 'Mis Resultados',
-        }}
+        options={{ title: 'Mis Resultados' }}
       />
       <Stack.Screen 
         name="Rankings" 
         component={RankingsScreen}
-        options={{
-          title: 'Rankings',
-        }}
+        options={{ title: 'Rankings' }}
       />
       <Stack.Screen 
         name="Profile" 
         component={ProfileScreen}
-        options={{
-          title: 'Mi Perfil',
-        }}
+        options={{ title: 'Mi Perfil' }}
       />
     </Stack.Navigator>
   );
 }
 
-// Root Navigator - switches between Auth and App based on user state
 function RootNavigator() {
   const { user, loading } = useAuth();
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F5F5' }}>
         <ActivityIndicator size="large" color="#D52B1E" />
       </View>
     );
