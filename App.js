@@ -15,7 +15,7 @@ import PredictionsScreen from './src/screens/PredictionsScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 import PrizeDashboardScreen from './src/screens/PrizeDashboardScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 const Stack = createNativeStackNavigator();
 
 function AuthNavigator() {
@@ -75,6 +75,7 @@ function AppNavigator() {
         component={ProfileScreen}
         options={{ title: 'Mi Perfil' }}
       />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </Stack.Navigator>
   );
 }

@@ -8,8 +8,12 @@ import {
   ScrollView,
   BackHandler,
   RefreshControl,
+  Image,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 
 const API_URL = 'https://cognitech.pythonanywhere.com';
 
@@ -19,17 +23,31 @@ const ProfileScreen = ({ navigation }) => {
   const [apellido, setApellido] = useState('');
   const [tickets, setTickets] = useState(0);
   
-  // NEW: Balance states
   const [totalMonedas, setTotalMonedas] = useState(0);
   const [monedasDisponibles, setMonedasDisponibles] = useState(0);
   const [totalPremios, setTotalPremios] = useState(0);
   const [recentPrizes, setRecentPrizes] = useState([]);
   
+  const [profilePicture, setProfilePicture] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
+    requestPermissions();
     fetchUserData();
   }, []);
+
+  const requestPermissions = async () => {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permisos necesarios',
+          'Necesitamos acceso a tu galería para subir fotos de perfil.'
+        );
+      }
+    }
+  };
 
   const fetchUserData = async () => {
     try {
@@ -43,8 +61,13 @@ const ProfileScreen = ({ navigation }) => {
         setApellido(parsedUser.apellido || '');
         setTickets(parsedUser.event_tickets || 0);
         
-        // NEW: Fetch balance from API
+        const savedPicture = await AsyncStorage.getItem(`profile_pic_${parsedUser.user_id}`);
+        if (savedPicture) {
+          setProfilePicture(savedPicture);
+        }
+        
         await fetchBalance(parsedUser.user_id);
+        await fetchProfilePicture(parsedUser.user_id);
       }
     } catch (error) {
       console.error('Fetch User Data Error:', error);
@@ -54,21 +77,105 @@ const ProfileScreen = ({ navigation }) => {
   const fetchBalance = async (user_id) => {
     try {
       const response = await fetch(
-        `${API_URL}/accounts/api/user-balance/?user_id=${user_id}`
+        `${API_URL}/api/accounts/user-balance/?user_id=${user_id}`
       );
       
       if (response.ok) {
         const data = await response.json();
-        
-        setTotalMonedas(data.balance.total_monedas || 0);
-        setMonedasDisponibles(data.balance.monedas_disponibles || 0);
-        setTotalPremios(data.balance.total_premios_ganados || 0);
-        setRecentPrizes(data.recent_prizes || []);
-        
-        console.log('Balance loaded:', data.balance);
+        if (data && data.balance) {
+          setTotalMonedas(data.balance.total_monedas || 0);
+          setMonedasDisponibles(data.balance.monedas_disponibles || 0);
+          setTotalPremios(data.balance.total_premios_ganados || 0);
+          setRecentPrizes(data.recent_prizes || []);
+        }
       }
     } catch (error) {
       console.error('Fetch Balance Error:', error);
+    }
+  };
+
+  const fetchProfilePicture = async (user_id) => {
+    try {
+      const response = await fetch(
+        `${API_URL}/api/accounts/profile-picture/?user_id=${user_id}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        const pictureUrl = data.profile_picture_url || data.profile_picture;
+        if (pictureUrl) {
+          setProfilePicture(pictureUrl);
+          await AsyncStorage.setItem(`profile_pic_${user_id}`, pictureUrl);
+        }
+      }
+    } catch (error) {
+      console.error('Fetch Profile Picture Error:', error);
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfilePicture(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Pick Image Error:', error);
+      Alert.alert('Error', 'No se pudo seleccionar la imagen.');
+    }
+  };
+
+  const uploadProfilePicture = async (imageUri) => {
+    setUploadingImage(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('user_id', userId);
+      
+      const uriParts = imageUri.split('.');
+      const fileType = uriParts[uriParts.length - 1];
+      
+      formData.append('profile_picture', {
+        uri: imageUri,
+        name: `profile_${userId}.${fileType}`,
+        type: `image/${fileType}`,
+      });
+
+      const response = await fetch(
+        `${API_URL}/api/accounts/upload-profile-picture/`,
+        {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const pictureUrl = data.profile_picture_url || data.profile_picture;
+        
+        if (pictureUrl) {
+          setProfilePicture(pictureUrl);
+          await AsyncStorage.setItem(`profile_pic_${userId}`, pictureUrl);
+          Alert.alert('Éxito', 'Foto de perfil actualizada correctamente.');
+        }
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.message || 'No se pudo subir la imagen.');
+      }
+    } catch (error) {
+      console.error('Upload Error:', error);
+      Alert.alert('Error', 'No se pudo subir la imagen.');
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -115,13 +222,34 @@ const ProfileScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatarEmoji}>👤</Text>
-        </View>
+        <TouchableOpacity 
+          style={styles.avatarContainer}
+          onPress={pickImage}
+          activeOpacity={0.8}
+        >
+          {uploadingImage ? (
+            <ActivityIndicator size="large" color="#FFF" />
+          ) : profilePicture ? (
+            <Image 
+              source={{ uri: profilePicture }} 
+              style={styles.avatarImage}
+            />
+          ) : (
+            <Text style={styles.avatarEmoji}>👤</Text>
+          )}
+          <View style={styles.cameraIconContainer}>
+            <Text style={styles.cameraIcon}>📷</Text>
+          </View>
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Mi Perfil</Text>
         <Text style={styles.headerSubtitle}>@{userId}</Text>
+        <TouchableOpacity 
+          style={styles.editPhotoButton}
+          onPress={pickImage}
+        >
+          <Text style={styles.editPhotoText}>Cambiar foto</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView 
@@ -137,7 +265,6 @@ const ProfileScreen = ({ navigation }) => {
           />
         }
       >
-        {/* NEW: Balance Card */}
         <View style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
             <Text style={styles.balanceTitle}>💰 Mi Balance</Text>
@@ -158,7 +285,6 @@ const ProfileScreen = ({ navigation }) => {
           )}
         </View>
 
-        {/* User Info Cards */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Información Personal</Text>
           
@@ -191,7 +317,6 @@ const ProfileScreen = ({ navigation }) => {
           />
         </View>
 
-        {/* Stats Card */}
         <View style={styles.statsCard}>
           <Text style={styles.statsTitle}>🏆 Estadísticas</Text>
           <View style={styles.statsRow}>
@@ -216,7 +341,6 @@ const ProfileScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* NEW: Recent Prizes */}
         {recentPrizes.length > 0 && (
           <View style={styles.prizesCard}>
             <Text style={styles.sectionTitle}>🏅 Últimos Premios</Text>
@@ -254,7 +378,6 @@ const ProfileScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Actions */}
         <View style={styles.actionsCard}>
           <Text style={styles.actionsTitle}>Acciones</Text>
 
@@ -296,7 +419,6 @@ const ProfileScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Quiniela Gallera © 2025</Text>
           <Text style={styles.footerSubtext}>Versión 1.0.1</Text>
@@ -334,9 +456,46 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     borderWidth: 3,
     borderColor: 'rgba(255, 255, 255, 0.3)',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 40,
   },
   avatarEmoji: {
     fontSize: 40,
+  },
+  cameraIconContainer: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#D52B1E',
+  },
+  cameraIcon: {
+    fontSize: 12,
+  },
+  editPhotoButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 15,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  editPhotoText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   headerTitle: {
     fontSize: 26,
@@ -356,7 +515,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 25,
   },
-  // NEW: Balance Card Styles
   balanceCard: {
     backgroundColor: '#FFD700',
     borderRadius: 20,
@@ -494,7 +652,6 @@ const styles = StyleSheet.create({
     height: 40,
     backgroundColor: '#E0E0E0',
   },
-  // NEW: Prizes Card Styles
   prizesCard: {
     backgroundColor: '#FFF',
     borderRadius: 20,

@@ -1,4 +1,4 @@
-// src/screens/SignUpScreen.js - PREMIUM BRANDED VERSION
+// src/screens/SignUpScreen.js - WITH PHONE NUMBER VALIDATION
 import React, { useState } from 'react';
 import {
   View,
@@ -36,7 +36,93 @@ const SignUpScreen = ({ navigation }) => {
   
   const { register } = useAuth();
 
+  // ============================================================================
+  // 🆕 PHONE NUMBER FORMATTING & VALIDATION
+  // ============================================================================
+
+  /**
+   * Formats phone number as user types for Guatemala format: +502-XXXX-XXXX
+   * Automatically adds country code and dashes
+   */
+  const formatPhoneNumber = (text) => {
+    // Remove all non-numeric characters
+    const cleaned = text.replace(/\D/g, '');
+    
+    // If starts with 502, keep it; otherwise we'll add it
+    let numbers = cleaned;
+    
+    // Remove leading 502 if present (we'll add it back with formatting)
+    if (numbers.startsWith('502')) {
+      numbers = numbers.substring(3);
+    }
+    
+    // Limit to 8 digits (Guatemala phone numbers are 8 digits)
+    numbers = numbers.substring(0, 8);
+    
+    // Format as: +502-XXXX-XXXX
+    let formatted = '+502';
+    
+    if (numbers.length > 0) {
+      formatted += '-' + numbers.substring(0, 4);
+    }
+    
+    if (numbers.length > 4) {
+      formatted += '-' + numbers.substring(4, 8);
+    }
+    
+    return formatted;
+  };
+
+  /**
+   * Validates Guatemala phone number format
+   * Must be 8 digits after country code
+   */
+  const validatePhoneNumber = (phone) => {
+    if (!phone || phone.trim() === '') {
+      return { valid: false, message: 'El número de teléfono es requerido para recibir notificaciones de WhatsApp' };
+    }
+    
+    // Remove all non-numeric characters
+    const cleaned = phone.replace(/\D/g, '');
+    
+    // Remove 502 if present
+    let numbers = cleaned;
+    if (numbers.startsWith('502')) {
+      numbers = numbers.substring(3);
+    }
+    
+    // Must be exactly 8 digits
+    if (numbers.length !== 8) {
+      return { 
+        valid: false, 
+        message: `Número inválido. Debe tener 8 dígitos. Actual: ${numbers.length} dígitos` 
+      };
+    }
+    
+    // First digit should be valid (2-9, not 0 or 1)
+    const firstDigit = numbers.charAt(0);
+    if (firstDigit === '0' || firstDigit === '1') {
+      return { 
+        valid: false, 
+        message: 'Número inválido. Números guatemaltecos no empiezan con 0 o 1' 
+      };
+    }
+    
+    return { valid: true, formatted: `+502${numbers}` };
+  };
+
+  /**
+   * Handles phone number input with auto-formatting
+   */
+  const handlePhoneChange = (text) => {
+    const formatted = formatPhoneNumber(text);
+    updateField('numero_celular', formatted);
+  };
+
+  // ============================================================================
+
   const handleRegister = async () => {
+    // Validate required fields
     if (!formData.user_id || !formData.password) {
       Alert.alert('Error', 'ID de usuario y contraseña son requeridos');
       return;
@@ -52,15 +138,33 @@ const SignUpScreen = ({ navigation }) => {
       return;
     }
 
+    // 🆕 VALIDATE PHONE NUMBER
+    const phoneValidation = validatePhoneNumber(formData.numero_celular);
+    if (!phoneValidation.valid) {
+      Alert.alert(
+        '📱 Número de Teléfono Inválido', 
+        phoneValidation.message + '\n\nFormato correcto: +502-XXXX-XXXX\nEjemplo: +502-5555-1234',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setLoading(true);
+    
+    // Prepare data with properly formatted phone
     const { confirmPassword, ...userData } = formData;
-    const result = await register(userData);
+    const dataToSend = {
+      ...userData,
+      numero_celular: phoneValidation.formatted // Send as +502XXXXXXXX (no dashes)
+    };
+    
+    const result = await register(dataToSend);
     setLoading(false);
 
     if (result.success) {
       Alert.alert(
-        '¡Éxito!',
-        'Cuenta creada exitosamente. Por favor inicia sesión.',
+        '¡Éxito! 🎉',
+        'Cuenta creada exitosamente.\n\n📱 Recibirás confirmaciones por WhatsApp cuando hagas predicciones.\n\nPor favor inicia sesión.',
         [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
       );
     } else {
@@ -116,6 +220,33 @@ const SignUpScreen = ({ navigation }) => {
         onBlur={() => setFocusedInput(null)}
         {...options}
       />
+    </View>
+  );
+
+  // 🆕 SPECIAL RENDER FOR PHONE NUMBER WITH FORMATTING
+  const renderPhoneInput = () => (
+    <View style={{ marginBottom: 5 }}>
+      <View style={[
+        styles.inputWrapper,
+        focusedInput === 'numero_celular' && styles.inputWrapperFocused
+      ]}>
+        <Text style={styles.inputIcon}>📱</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Número de Celular *"
+          placeholderTextColor="#999"
+          value={formData.numero_celular}
+          onChangeText={handlePhoneChange}
+          editable={!loading}
+          onFocus={() => setFocusedInput('numero_celular')}
+          onBlur={() => setFocusedInput(null)}
+          keyboardType="phone-pad"
+          maxLength={16} // +502-XXXX-XXXX = 15 chars
+        />
+      </View>
+      <Text style={styles.helperText}>
+        Formato: +502-XXXX-XXXX • Requerido para WhatsApp
+      </Text>
     </View>
   );
 
@@ -186,8 +317,18 @@ const SignUpScreen = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
 
-          {renderInput('Número de Celular', 'numero_celular', '📱', { keyboardType: 'phone-pad' })}
+          {/* 🆕 UPDATED: Phone input with formatting */}
+          {renderPhoneInput()}
+          
           {renderInput('Dirección', 'direccion', '📍')}
+
+          {/* WhatsApp Info Box */}
+          <View style={styles.infoBox}>
+            <Text style={styles.infoIcon}>📱</Text>
+            <Text style={styles.infoText}>
+              Recibirás confirmaciones por WhatsApp cuando hagas predicciones
+            </Text>
+          </View>
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
@@ -197,21 +338,20 @@ const SignUpScreen = ({ navigation }) => {
           >
             <View style={styles.buttonContent}>
               {loading ? (
-                <ActivityIndicator color="#FFF" size="small" />
+                <ActivityIndicator color="#FFF" />
               ) : (
                 <Text style={styles.buttonText}>CREAR CUENTA</Text>
               )}
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
+          <TouchableOpacity 
+            style={styles.loginLink} 
             onPress={() => navigation.navigate('Login')}
             disabled={loading}
-            style={styles.loginLink}
           >
             <Text style={styles.linkText}>
-              ¿Ya tienes cuenta?{' '}
-              <Text style={styles.linkTextBold}>Inicia Sesión</Text>
+              ¿Ya tienes cuenta? <Text style={styles.linkTextBold}>Inicia Sesión</Text>
             </Text>
           </TouchableOpacity>
         </View>
@@ -222,58 +362,59 @@ const SignUpScreen = ({ navigation }) => {
         visible={showDatePicker}
         transparent={true}
         animationType="fade"
+        onRequestClose={() => setShowDatePicker(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.datePickerModal}>
-            <Text style={styles.modalTitle}>Fecha de Nacimiento</Text>
+            <Text style={styles.modalTitle}>📅 Selecciona tu Fecha de Nacimiento</Text>
             
             <View style={styles.dateInputsContainer}>
               <View style={styles.dateInputGroup}>
                 <Text style={styles.dateLabel}>Año</Text>
                 <TextInput
                   style={styles.dateInput}
-                  placeholder="YYYY"
-                  keyboardType="number-pad"
-                  maxLength={4}
                   value={yearInput}
                   onChangeText={setYearInput}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  placeholder="2000"
                 />
               </View>
-
+              
               <View style={styles.dateInputGroup}>
                 <Text style={styles.dateLabel}>Mes</Text>
                 <TextInput
                   style={styles.dateInput}
-                  placeholder="MM"
-                  keyboardType="number-pad"
-                  maxLength={2}
                   value={monthInput}
                   onChangeText={setMonthInput}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="01"
                 />
               </View>
-
+              
               <View style={styles.dateInputGroup}>
                 <Text style={styles.dateLabel}>Día</Text>
                 <TextInput
                   style={styles.dateInput}
-                  placeholder="DD"
-                  keyboardType="number-pad"
-                  maxLength={2}
                   value={dayInput}
                   onChangeText={setDayInput}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="01"
                 />
               </View>
             </View>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity
+              <TouchableOpacity 
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => setShowDatePicker(false)}
               >
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
+              
+              <TouchableOpacity 
                 style={[styles.modalButton, styles.confirmButton]}
                 onPress={handleDateSelect}
               >
@@ -290,27 +431,27 @@ const SignUpScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#F5F5F5',
   },
   background: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 200,
+    height: 250,
     backgroundColor: '#D52B1E',
   },
   backgroundOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
   },
   header: {
-    paddingTop: 50,
-    paddingBottom: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 30,
     paddingHorizontal: 20,
   },
   backButton: {
-    marginBottom: 15,
+    marginBottom: 20,
   },
   backButtonText: {
     color: '#FFF',
@@ -321,7 +462,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerEmoji: {
-    fontSize: 40,
+    fontSize: 48,
     marginBottom: 10,
   },
   headerTitle: {
@@ -407,6 +548,35 @@ const styles = StyleSheet.create({
   },
   datePlaceholder: {
     color: '#999',
+  },
+  // 🆕 NEW STYLES FOR PHONE INPUT
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 15,
+    marginTop: -8,
+    marginBottom: 12,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 5,
+    marginBottom: 15,
+    borderLeftWidth: 3,
+    borderLeftColor: '#4CAF50',
+  },
+  infoIcon: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#2E7D32',
+    lineHeight: 18,
   },
   button: {
     borderRadius: 12,
