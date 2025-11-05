@@ -13,7 +13,7 @@ import EventDetailScreen from './src/screens/EventDetailScreen';
 import RoundPredictionsScreen from './src/screens/RoundPredictionsScreen'; // ⭐ NEW
 import PredictionsScreen from './src/screens/PredictionsScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
-import RankingsScreen from './src/screens/RankingsScreen';
+import PrizeDashboardScreen from './src/screens/PrizeDashboardScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 
 const Stack = createNativeStackNavigator();
@@ -66,9 +66,9 @@ function AppNavigator() {
         options={{ title: 'Mis Resultados' }}
       />
       <Stack.Screen 
-        name="Rankings" 
-        component={RankingsScreen}
-        options={{ title: 'Rankings' }}
+        name="PrizeDashboard" 
+        component={PrizeDashboardScreen}
+        options={{ title: 'Premios' }}
       />
       <Stack.Screen 
         name="Profile" 

@@ -182,10 +182,10 @@ const HomeScreen = ({ navigation }) => {
 
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => navigation.navigate('Rankings')}
+          onPress={() => navigation.navigate('PrizeDashboard')}
         >
           <Text style={styles.navIcon}>🏆</Text>
-          <Text style={styles.navText}>Rankings</Text>
+          <Text style={styles.navText}>Premios</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

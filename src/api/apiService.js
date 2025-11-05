@@ -289,3 +289,25 @@ export const pollRankings = (event_id, callback, interval = 30000) => {
 };
 
 export default api;
+
+
+// Prize Pool APIs
+export const getPrizePoolInfo = async () => {
+  try {
+    const response = await api.get('/eventos/api/prize-pool/');
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};
+
+export const getUserPrizeHistory = async (user_id) => {
+  try {
+    const response = await api.get('/eventos/api/user-prize-history/', {
+      params: { user_id }
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};

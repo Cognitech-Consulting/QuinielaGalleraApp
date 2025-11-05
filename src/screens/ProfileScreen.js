@@ -1,27 +1,20 @@
-// src/screens/ProfileScreen.js - PREMIUM BRANDED VERSION
+// src/screens/ProfileScreen.js - FIXED TO READ FROM 'user' KEY
 import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
-
-const BASE_URL = 'https://cognitech.pythonanywhere.com';
 
 const ProfileScreen = ({ navigation }) => {
   const [userId, setUserId] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [focusedInput, setFocusedInput] = useState(null);
+  const [nombre, setNombre] = useState('');
+  const [apellido, setApellido] = useState('');
+  const [tickets, setTickets] = useState(0);
 
   useEffect(() => {
     fetchUserData();
@@ -29,46 +22,20 @@ const ProfileScreen = ({ navigation }) => {
 
   const fetchUserData = async () => {
     try {
-      const storedUserId = await AsyncStorage.getItem('user_id');
-      if (storedUserId) {
-        setUserId(storedUserId);
-        setUsername(storedUserId);
+      // ⭐ FIXED: Read from 'user' key (single JSON object)
+      const userData = await AsyncStorage.getItem('user');
+      
+      if (userData) {
+        const parsedUser = JSON.parse(userData);
+        console.log('Retrieved user data:', parsedUser); // Debug log
+        
+        setUserId(parsedUser.user_id || '');
+        setNombre(parsedUser.nombre || '');
+        setApellido(parsedUser.apellido || '');
+        setTickets(parsedUser.event_tickets || 0);
       }
     } catch (error) {
       console.error('Fetch User Data Error:', error);
-    }
-  };
-
-  const handleUpdateProfile = async () => {
-    if (password && password !== confirmPassword) {
-      Alert.alert('Error', 'Las contraseñas no coinciden.');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const payload = {
-        user_id: userId,
-        new_username: username,
-        new_password: password || undefined,
-      };
-
-      const response = await axios.post(`${BASE_URL}/api/accounts/update-profile/`, payload, {
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (response.status === 200) {
-        Alert.alert('¡Éxito!', 'Perfil actualizado correctamente.');
-        setPassword('');
-        setConfirmPassword('');
-      } else {
-        Alert.alert('Error', 'No se pudo actualizar el perfil.');
-      }
-    } catch (error) {
-      console.error('Update Profile Error:', error);
-      Alert.alert('Error', 'Ocurrió un problema al actualizar el perfil.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -84,10 +51,11 @@ const ProfileScreen = ({ navigation }) => {
           onPress: async () => {
             try {
               await AsyncStorage.clear();
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }],
-              });
+              Alert.alert(
+                'Sesión Cerrada', 
+                'Por favor cierra y vuelve a abrir la aplicación.',
+                [{ text: 'OK' }]
+              );
             } catch (error) {
               console.error('Logout Error:', error);
               Alert.alert('Error', 'No se pudo cerrar la sesión.');
@@ -98,23 +66,15 @@ const ProfileScreen = ({ navigation }) => {
     );
   };
 
-  const renderInput = (placeholder, value, onChangeText, icon, options = {}) => (
-    <View style={[
-      styles.inputWrapper,
-      focusedInput === placeholder && styles.inputWrapperFocused
-    ]}>
-      <Text style={styles.inputIcon}>{icon}</Text>
-      <TextInput
-        style={styles.input}
-        placeholder={placeholder}
-        placeholderTextColor="#999"
-        value={value}
-        onChangeText={onChangeText}
-        onFocus={() => setFocusedInput(placeholder)}
-        onBlur={() => setFocusedInput(null)}
-        editable={!loading}
-        {...options}
-      />
+  const InfoCard = ({ icon, label, value, color = '#D52B1E' }) => (
+    <View style={styles.infoCard}>
+      <View style={[styles.iconCircle, { backgroundColor: color + '20' }]}>
+        <Text style={styles.infoIcon}>{icon}</Text>
+      </View>
+      <View style={styles.infoContent}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value || 'N/A'}</Text>
+      </View>
     </View>
   );
 
@@ -126,7 +86,7 @@ const ProfileScreen = ({ navigation }) => {
           <Text style={styles.avatarEmoji}>👤</Text>
         </View>
         <Text style={styles.headerTitle}>Mi Perfil</Text>
-        <Text style={styles.headerSubtitle}>{userId}</Text>
+        <Text style={styles.headerSubtitle}>@{userId}</Text>
       </View>
 
       <ScrollView 
@@ -134,40 +94,101 @@ const ProfileScreen = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile Card */}
-        <View style={styles.profileCard}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Información de Cuenta</Text>
-            <View style={styles.sectionDivider} />
-          </View>
-
-          {renderInput('Nombre de Usuario', username, setUsername, '✨')}
-
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Cambiar Contraseña</Text>
-            <View style={styles.sectionDivider} />
-          </View>
-
-          {renderInput('Nueva Contraseña', password, setPassword, '🔒', { secureTextEntry: true })}
-          {renderInput('Confirmar Contraseña', confirmPassword, setConfirmPassword, '🔒', { secureTextEntry: true })}
-
-          <TouchableOpacity
-            style={[styles.updateButton, loading && styles.buttonDisabled]}
-            onPress={handleUpdateProfile}
-            disabled={loading}
-            activeOpacity={0.8}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.updateButtonText}>Actualizar Perfil</Text>
-            )}
-          </TouchableOpacity>
+        {/* User Info Cards */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Información Personal</Text>
+          
+          <InfoCard 
+            icon="👤" 
+            label="Usuario" 
+            value={userId}
+            color="#D52B1E"
+          />
+          
+          <InfoCard 
+            icon="✨" 
+            label="Nombre" 
+            value={nombre}
+            color="#4CAF50"
+          />
+          
+          <InfoCard 
+            icon="📝" 
+            label="Apellido" 
+            value={apellido}
+            color="#2196F3"
+          />
+          
+          <InfoCard 
+            icon="🎟️" 
+            label="Tickets Disponibles" 
+            value={`${tickets} tickets`}
+            color="#FF9800"
+          />
         </View>
 
-        {/* Account Actions */}
+        {/* Stats Card */}
+        <View style={styles.statsCard}>
+          <Text style={styles.statsTitle}>🏆 Estadísticas</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{tickets}</Text>
+              <Text style={styles.statLabel}>Tickets</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>0</Text>
+              <Text style={styles.statLabel}>Premios</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>0</Text>
+              <Text style={styles.statLabel}>Participaciones</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Actions */}
         <View style={styles.actionsCard}>
-          <Text style={styles.actionsTitle}>Acciones de Cuenta</Text>
+          <Text style={styles.actionsTitle}>Acciones</Text>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => Alert.alert('Próximamente', 'Esta función estará disponible pronto')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.actionButtonContent}>
+              <Text style={styles.actionIcon}>⚙️</Text>
+              <Text style={styles.actionButtonText}>Configuración</Text>
+            </View>
+            <Text style={styles.actionArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => Alert.alert('Próximamente', 'Esta función estará disponible pronto')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.actionButtonContent}>
+              <Text style={styles.actionIcon}>🏆</Text>
+              <Text style={styles.actionButtonText}>Mis Premios</Text>
+            </View>
+            <Text style={styles.actionArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => Alert.alert('Próximamente', 'Esta función estará disponible pronto')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.actionButtonContent}>
+              <Text style={styles.actionIcon}>📊</Text>
+              <Text style={styles.actionButtonText}>Historial</Text>
+            </View>
+            <Text style={styles.actionArrow}>›</Text>
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
 
           <TouchableOpacity
             style={styles.logoutButton}
@@ -241,7 +262,55 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 25,
   },
-  profileCard: {
+  section: {
+    marginBottom: 15,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+    marginBottom: 15,
+    paddingLeft: 5,
+  },
+  infoCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  iconCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  infoIcon: {
+    fontSize: 24,
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 3,
+    fontWeight: '500',
+  },
+  infoValue: {
+    fontSize: 16,
+    color: '#1a1a1a',
+    fontWeight: '600',
+  },
+  statsCard: {
     backgroundColor: '#FFF',
     borderRadius: 20,
     padding: 20,
@@ -252,72 +321,37 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
-  sectionHeader: {
-    marginTop: 5,
-    marginBottom: 15,
-  },
-  sectionTitle: {
-    fontSize: 16,
+  statsTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#1a1a1a',
-    marginBottom: 8,
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  sectionDivider: {
-    height: 2,
-    width: 40,
-    backgroundColor: '#D52B1E',
-  },
-  inputWrapper: {
+  statsRow: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
     alignItems: 'center',
-    backgroundColor: '#F8F8F8',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
   },
-  inputWrapperFocused: {
-    borderColor: '#D52B1E',
-    backgroundColor: '#FFF',
-    shadowOpacity: 0.1,
-  },
-  inputIcon: {
-    fontSize: 20,
-    marginLeft: 15,
-  },
-  input: {
+  statItem: {
+    alignItems: 'center',
     flex: 1,
-    height: 50,
-    paddingHorizontal: 15,
-    fontSize: 15,
-    color: '#1a1a1a',
   },
-  updateButton: {
-    backgroundColor: '#D52B1E',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#D52B1E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-    backgroundColor: '#999',
-  },
-  updateButtonText: {
-    color: '#FFF',
-    fontSize: 16,
+  statValue: {
+    fontSize: 28,
     fontWeight: 'bold',
-    letterSpacing: 0.5,
+    color: '#D52B1E',
+    marginBottom: 5,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#E0E0E0',
   },
   actionsCard: {
     backgroundColor: '#FFF',
@@ -335,6 +369,39 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1a1a1a',
     marginBottom: 15,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    marginBottom: 8,
+    backgroundColor: '#F8F8F8',
+  },
+  actionButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionIcon: {
+    fontSize: 22,
+    marginRight: 12,
+  },
+  actionButtonText: {
+    fontSize: 15,
+    color: '#1a1a1a',
+    fontWeight: '500',
+  },
+  actionArrow: {
+    fontSize: 24,
+    color: '#999',
+    fontWeight: '300',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginVertical: 15,
   },
   logoutButton: {
     backgroundColor: '#1a1a1a',
