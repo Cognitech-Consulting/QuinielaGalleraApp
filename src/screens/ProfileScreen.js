@@ -1,4 +1,3 @@
-// src/screens/ProfileScreen.js - FIXED TO READ FROM 'user' KEY
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -7,14 +6,26 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
+  BackHandler,
+  RefreshControl,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const API_URL = 'https://cognitech.pythonanywhere.com';
 
 const ProfileScreen = ({ navigation }) => {
   const [userId, setUserId] = useState('');
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
   const [tickets, setTickets] = useState(0);
+  
+  // NEW: Balance states
+  const [totalMonedas, setTotalMonedas] = useState(0);
+  const [monedasDisponibles, setMonedasDisponibles] = useState(0);
+  const [totalPremios, setTotalPremios] = useState(0);
+  const [recentPrizes, setRecentPrizes] = useState([]);
+  
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchUserData();
@@ -22,21 +33,49 @@ const ProfileScreen = ({ navigation }) => {
 
   const fetchUserData = async () => {
     try {
-      // ⭐ FIXED: Read from 'user' key (single JSON object)
       const userData = await AsyncStorage.getItem('user');
       
       if (userData) {
         const parsedUser = JSON.parse(userData);
-        console.log('Retrieved user data:', parsedUser); // Debug log
         
         setUserId(parsedUser.user_id || '');
         setNombre(parsedUser.nombre || '');
         setApellido(parsedUser.apellido || '');
         setTickets(parsedUser.event_tickets || 0);
+        
+        // NEW: Fetch balance from API
+        await fetchBalance(parsedUser.user_id);
       }
     } catch (error) {
       console.error('Fetch User Data Error:', error);
     }
+  };
+
+  const fetchBalance = async (user_id) => {
+    try {
+      const response = await fetch(
+        `${API_URL}/accounts/api/user-balance/?user_id=${user_id}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        setTotalMonedas(data.balance.total_monedas || 0);
+        setMonedasDisponibles(data.balance.monedas_disponibles || 0);
+        setTotalPremios(data.balance.total_premios_ganados || 0);
+        setRecentPrizes(data.recent_prizes || []);
+        
+        console.log('Balance loaded:', data.balance);
+      }
+    } catch (error) {
+      console.error('Fetch Balance Error:', error);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchUserData();
+    setRefreshing(false);
   };
 
   const handleLogout = async () => {
@@ -51,11 +90,7 @@ const ProfileScreen = ({ navigation }) => {
           onPress: async () => {
             try {
               await AsyncStorage.clear();
-              Alert.alert(
-                'Sesión Cerrada', 
-                'Por favor cierra y vuelve a abrir la aplicación.',
-                [{ text: 'OK' }]
-              );
+              BackHandler.exitApp();
             } catch (error) {
               console.error('Logout Error:', error);
               Alert.alert('Error', 'No se pudo cerrar la sesión.');
@@ -93,7 +128,36 @@ const ProfileScreen = ({ navigation }) => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#D52B1E']}
+            tintColor="#D52B1E"
+          />
+        }
       >
+        {/* NEW: Balance Card */}
+        <View style={styles.balanceCard}>
+          <View style={styles.balanceHeader}>
+            <Text style={styles.balanceTitle}>💰 Mi Balance</Text>
+            <TouchableOpacity onPress={onRefresh}>
+              <Text style={styles.refreshText}>🔄</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.balanceAmount}>
+            <Text style={styles.balanceValue}>
+              {totalMonedas.toLocaleString('es-GT')}
+            </Text>
+            <Text style={styles.balanceCurrency}>monedas</Text>
+          </View>
+          {monedasDisponibles !== totalMonedas && (
+            <Text style={styles.balanceSubtext}>
+              Disponibles: {monedasDisponibles.toLocaleString('es-GT')}
+            </Text>
+          )}
+        </View>
+
         {/* User Info Cards */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Información Personal</Text>
@@ -137,16 +201,58 @@ const ProfileScreen = ({ navigation }) => {
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>0</Text>
+              <Text style={[styles.statValue, { color: '#FFD700' }]}>
+                {totalPremios}
+              </Text>
               <Text style={styles.statLabel}>Premios</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>0</Text>
-              <Text style={styles.statLabel}>Participaciones</Text>
+              <Text style={[styles.statValue, { color: '#4CAF50' }]}>
+                {totalMonedas > 0 ? totalMonedas.toLocaleString('es-GT', {maximumFractionDigits: 0}) : '0'}
+              </Text>
+              <Text style={styles.statLabel}>Monedas</Text>
             </View>
           </View>
         </View>
+
+        {/* NEW: Recent Prizes */}
+        {recentPrizes.length > 0 && (
+          <View style={styles.prizesCard}>
+            <Text style={styles.sectionTitle}>🏅 Últimos Premios</Text>
+            {recentPrizes.slice(0, 5).map((prize, index) => (
+              <View key={prize.id || index} style={styles.prizeRow}>
+                <View style={styles.prizeLeft}>
+                  <Text style={styles.prizeType}>{prize.tipo_display}</Text>
+                  <Text style={styles.prizeDetails}>
+                    {prize.evento} • Ronda {prize.ronda}
+                  </Text>
+                  <Text style={styles.prizeDate}>
+                    {new Date(prize.fecha).toLocaleDateString('es-GT', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric'
+                    })}
+                  </Text>
+                </View>
+                <View style={styles.prizeRight}>
+                  <Text style={styles.prizeAmount}>
+                    +{prize.monto.toLocaleString('es-GT')}
+                  </Text>
+                  <Text style={styles.prizeCurrency}>💰</Text>
+                </View>
+              </View>
+            ))}
+            
+            {recentPrizes.length > 5 && (
+              <TouchableOpacity style={styles.viewAllButton}>
+                <Text style={styles.viewAllText}>
+                  Ver todos ({recentPrizes.length} premios)
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Actions */}
         <View style={styles.actionsCard}>
@@ -166,24 +272,12 @@ const ProfileScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => Alert.alert('Próximamente', 'Esta función estará disponible pronto')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.actionButtonContent}>
-              <Text style={styles.actionIcon}>🏆</Text>
-              <Text style={styles.actionButtonText}>Mis Premios</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => Alert.alert('Próximamente', 'Esta función estará disponible pronto')}
+            onPress={() => navigation.navigate('Results')}
             activeOpacity={0.8}
           >
             <View style={styles.actionButtonContent}>
               <Text style={styles.actionIcon}>📊</Text>
-              <Text style={styles.actionButtonText}>Historial</Text>
+              <Text style={styles.actionButtonText}>Mis Resultados</Text>
             </View>
             <Text style={styles.actionArrow}>›</Text>
           </TouchableOpacity>
@@ -205,7 +299,7 @@ const ProfileScreen = ({ navigation }) => {
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Quiniela Gallera © 2025</Text>
-          <Text style={styles.footerSubtext}>Versión 1.0.0</Text>
+          <Text style={styles.footerSubtext}>Versión 1.0.1</Text>
         </View>
       </ScrollView>
     </View>
@@ -261,6 +355,53 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingTop: 25,
+  },
+  // NEW: Balance Card Styles
+  balanceCard: {
+    backgroundColor: '#FFD700',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  balanceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  balanceTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+  },
+  refreshText: {
+    fontSize: 20,
+  },
+  balanceAmount: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  balanceValue: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+  },
+  balanceCurrency: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 5,
+  },
+  balanceSubtext: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 5,
   },
   section: {
     marginBottom: 15,
@@ -352,6 +493,68 @@ const styles = StyleSheet.create({
     width: 1,
     height: 40,
     backgroundColor: '#E0E0E0',
+  },
+  // NEW: Prizes Card Styles
+  prizesCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  prizeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  prizeLeft: {
+    flex: 1,
+  },
+  prizeType: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  prizeDetails: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
+  prizeDate: {
+    fontSize: 11,
+    color: '#999',
+  },
+  prizeRight: {
+    alignItems: 'flex-end',
+  },
+  prizeAmount: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    marginBottom: 2,
+  },
+  prizeCurrency: {
+    fontSize: 14,
+  },
+  viewAllButton: {
+    marginTop: 15,
+    padding: 12,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#D52B1E',
   },
   actionsCard: {
     backgroundColor: '#FFF',
