@@ -1,4 +1,3 @@
-// src/screens/HomeScreen.js - UPDATED VERSION
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -9,9 +8,13 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { getAllActiveEvents, getUserTickets, pollAllActiveEvents } from '../api/apiService';
+
+// Import your logo image
+import logo from '../../assets/logo.png';
 
 const HomeScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
@@ -22,29 +25,21 @@ const HomeScreen = ({ navigation }) => {
 
   useEffect(() => {
     loadInitialData();
-
-    // Start polling for events (updates every 15 seconds)
-    const stopPolling = pollAllActiveEvents((data, error) => {
+    const stopPolling = pollAllActiveEvents((data) => {
       if (data && data.events) {
         setEvents(data.events);
       }
     }, 15000);
-
     return () => stopPolling();
   }, []);
 
   const loadInitialData = async () => {
     try {
       setLoading(true);
-
-      // Load user tickets
       const ticketsData = await getUserTickets(user.user_id);
       setTickets(ticketsData.event_tickets);
-
-      // Load all active events
       const eventsData = await getAllActiveEvents();
       setEvents(eventsData.events || []);
-
     } catch (error) {
       console.error('Error loading data:', error);
       Alert.alert('Error', 'No se pudieron cargar los eventos');
@@ -60,7 +55,6 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleEventPress = (event) => {
-    // Navigate to event detail screen
     navigation.navigate('EventDetail', { event });
   };
 
@@ -68,7 +62,7 @@ const HomeScreen = ({ navigation }) => {
     return (
       <View style={styles.loadingContainer}>
         <View style={styles.logoCircle}>
-          <Text style={styles.logoEmoji}>🐓</Text>
+          <Image source={logo} style={styles.logoImageLarge} resizeMode="cover" />
         </View>
         <ActivityIndicator size="large" color="#D52B1E" style={{ marginTop: 20 }} />
         <Text style={styles.loadingText}>Cargando eventos...</Text>
@@ -83,7 +77,7 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.headerTop}>
           <View style={styles.logoSection}>
             <View style={styles.logoCircle}>
-              <Text style={styles.logoEmoji}>🐓</Text>
+              <Image source={logo} style={styles.logoImageLarge} resizeMode="cover" />
             </View>
             <Text style={styles.appTitle}>Quiniela Gallera</Text>
           </View>
@@ -142,16 +136,13 @@ const HomeScreen = ({ navigation }) => {
                 </View>
               </View>
 
-              {/* Show active rounds count */}
               <View style={styles.activeRoundsContainer}>
-                {event.rondas.filter(r => r.active).length > 0 ? (
+                {event.rondas.filter((r) => r.active).length > 0 ? (
                   <Text style={styles.activeRoundsText}>
-                    🟢 {event.rondas.filter(r => r.active).length} ronda(s) activa(s)
+                    🟢 {event.rondas.filter((r) => r.active).length} ronda(s) activa(s)
                   </Text>
                 ) : (
-                  <Text style={styles.inactiveRoundsText}>
-                    🔴 Sin rondas activas
-                  </Text>
+                  <Text style={styles.inactiveRoundsText}>🔴 Sin rondas activas</Text>
                 )}
               </View>
 
@@ -165,33 +156,24 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* Bottom Navigation */}
+      {/* Navbar */}
       <View style={styles.navbar}>
         <TouchableOpacity style={styles.navItemActive}>
           <Text style={styles.navIconActive}>🏠</Text>
           <Text style={styles.navTextActive}>Inicio</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Results')}
-        >
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Results')}>
           <Text style={styles.navIcon}>📊</Text>
           <Text style={styles.navText}>Resultados</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('PrizeDashboard')}
-        >
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('PrizeDashboard')}>
           <Text style={styles.navIcon}>🏆</Text>
           <Text style={styles.navText}>Premios</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Profile')}
-        >
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Profile')}>
           <Text style={styles.navIcon}>👤</Text>
           <Text style={styles.navText}>Perfil</Text>
         </TouchableOpacity>
@@ -201,20 +183,12 @@ const HomeScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-  },
+  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F5F5' },
   logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: '#FFF',
     justifyContent: 'center',
     alignItems: 'center',
@@ -224,15 +198,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
-  logoEmoji: {
-    fontSize: 40,
+  logoImageLarge: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
-  },
+  loadingText: { marginTop: 16, fontSize: 16, color: '#666', fontWeight: '500' },
   header: {
     backgroundColor: '#D52B1E',
     paddingTop: 50,
@@ -241,42 +212,13 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
   },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  logoSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  appTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFF',
-    marginLeft: 12,
-  },
-  logoutButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  logoutText: {
-    color: '#FFF',
-    fontWeight: '600',
-  },
-  userInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  userName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  logoSection: { flexDirection: 'row', alignItems: 'center' },
+  appTitle: { fontSize: 20, fontWeight: 'bold', color: '#FFF', marginLeft: 12 },
+  logoutButton: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  logoutText: { color: '#FFF', fontWeight: '600' },
+  userInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  userName: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
   ticketsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -285,25 +227,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
-  ticketEmoji: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  ticketsText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 16,
-  },
+  ticketEmoji: { fontSize: 16, marginRight: 6 },
+  ticketsText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  content: { flex: 1, padding: 20 },
+  sectionTitle: { fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 16 },
   eventCard: {
     backgroundColor: '#FFF',
     borderRadius: 16,
@@ -315,91 +242,23 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  eventHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  eventName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    flex: 1,
-  },
-  roundCount: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#D52B1E',
-    backgroundColor: '#FFE5E5',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  eventDetails: {
-    marginBottom: 12,
-  },
-  eventDetail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  detailIcon: {
-    fontSize: 16,
-    marginRight: 8,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  activeRoundsContainer: {
-    marginBottom: 12,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-  },
-  activeRoundsText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#28a745',
-  },
-  inactiveRoundsText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#999',
-  },
-  viewDetailsButton: {
-    alignItems: 'center',
-    paddingTop: 8,
-  },
-  viewDetailsText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#D52B1E',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-  },
-  bottomSpacer: {
-    height: 20,
-  },
+  eventHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  eventName: { fontSize: 18, fontWeight: 'bold', color: '#333', flex: 1 },
+  roundCount: { fontSize: 14, fontWeight: '600', color: '#D52B1E', backgroundColor: '#FFE5E5', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
+  eventDetails: { marginBottom: 12 },
+  eventDetail: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  detailIcon: { fontSize: 16, marginRight: 8 },
+  detailText: { fontSize: 14, color: '#666' },
+  activeRoundsContainer: { marginBottom: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
+  activeRoundsText: { fontSize: 14, fontWeight: '600', color: '#28a745' },
+  inactiveRoundsText: { fontSize: 14, fontWeight: '600', color: '#999' },
+  viewDetailsButton: { alignItems: 'center', paddingTop: 8 },
+  viewDetailsText: { fontSize: 15, fontWeight: '600', color: '#D52B1E' },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  emptyEmoji: { fontSize: 64, marginBottom: 16 },
+  emptyText: { fontSize: 18, fontWeight: '600', color: '#333', marginBottom: 8 },
+  emptySubtext: { fontSize: 14, color: '#999', textAlign: 'center' },
+  bottomSpacer: { height: 20 },
   navbar: {
     flexDirection: 'row',
     backgroundColor: '#FFF',
@@ -408,34 +267,12 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     paddingTop: 10,
   },
-  navItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  navItemActive: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  navIcon: {
-    fontSize: 24,
-    marginBottom: 4,
-    opacity: 0.5,
-  },
-  navIconActive: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  navText: {
-    fontSize: 12,
-    color: '#999',
-  },
-  navTextActive: {
-    fontSize: 12,
-    color: '#D52B1E',
-    fontWeight: '600',
-  },
+  navItem: { flex: 1, alignItems: 'center', paddingVertical: 8 },
+  navItemActive: { flex: 1, alignItems: 'center', paddingVertical: 8 },
+  navIcon: { fontSize: 24, marginBottom: 4, opacity: 0.5 },
+  navIconActive: { fontSize: 24, marginBottom: 4 },
+  navText: { fontSize: 12, color: '#999' },
+  navTextActive: { fontSize: 12, color: '#D52B1E', fontWeight: '600' },
 });
 
 export default HomeScreen;

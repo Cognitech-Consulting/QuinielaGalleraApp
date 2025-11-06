@@ -1,7 +1,7 @@
 // src/screens/ResultsScreen.js
-// UPDATED VERSION - Shows detailed stats per participation
+// UPDATED VERSION - Auto-polling every 20 seconds + Fixed results display
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,41 +15,83 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 
 const API_URL = 'https://cognitech.pythonanywhere.com';
+const POLLING_INTERVAL = 20000; // 20 seconds
 
 export default function ResultsScreen({ navigation }) {
   const [participaciones, setParticipaciones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedParticipaciones, setExpandedParticipaciones] = useState({});
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  
+  const pollingIntervalRef = useRef(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadParticipaciones();
+
+    // Start auto-polling
+    pollingIntervalRef.current = setInterval(() => {
+      if (isMountedRef.current) {
+        console.log('🔄 Auto-polling results...');
+        loadParticipaciones(true); // Silent reload
+      }
+    }, POLLING_INTERVAL);
+
+    // Cleanup on unmount
+    return () => {
+      isMountedRef.current = false;
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
   }, []);
 
-  const loadParticipaciones = async () => {
+  const loadParticipaciones = async (silent = false) => {
     try {
+      if (!silent) {
+        setLoading(true);
+      }
+
       const userData = await AsyncStorage.getItem('user');
       if (!userData) {
-        setLoading(false);
+        if (!silent) setLoading(false);
         return;
       }
 
       const user = JSON.parse(userData);
       const response = await fetch(
-        `${API_URL}/eventos/api/get-user-ronda-participaciones/?user_id=${user.user_id}`
+        `${API_URL}/eventos/api/get-user-ronda-participaciones/?user_id=${user.user_id}`,
+        {
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          },
+        }
       );
 
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Results loaded:', data.participaciones.length, 'participaciones');
+        
         // Group by event
         const grouped = groupByEvent(data.participaciones);
-        setParticipaciones(grouped);
+        
+        if (isMountedRef.current) {
+          setParticipaciones(grouped);
+          setLastUpdate(new Date());
+        }
+      } else {
+        console.error('❌ Failed to load results:', response.status);
       }
     } catch (error) {
-      console.error('Error loading participaciones:', error);
+      console.error('❌ Error loading participaciones:', error);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isMountedRef.current) {
+        if (!silent) setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
@@ -98,15 +140,24 @@ export default function ResultsScreen({ navigation }) {
   const renderPrediccion = (pred, resultsVisible) => {
     const getStatusIcon = () => {
       if (!resultsVisible) return '⏳';
-      if (pred.es_correcta === true) return '✓';
-      if (pred.es_correcta === false) return '✗';
+      
+      // Check if result exists and is not null/undefined
+      if (pred.resultado_real && pred.resultado_real !== 'pending') {
+        if (pred.es_correcta === true) return '✓';
+        if (pred.es_correcta === false) return '✗';
+      }
+      
       return '⏳';
     };
 
     const getStatusColor = () => {
       if (!resultsVisible) return '#FFA500';
-      if (pred.es_correcta === true) return '#2ECC71';
-      if (pred.es_correcta === false) return '#E74C3C';
+      
+      if (pred.resultado_real && pred.resultado_real !== 'pending') {
+        if (pred.es_correcta === true) return '#2ECC71';
+        if (pred.es_correcta === false) return '#E74C3C';
+      }
+      
       return '#FFA500';
     };
 
@@ -118,10 +169,16 @@ export default function ResultsScreen({ navigation }) {
 
     const getResultadoText = () => {
       if (!resultsVisible) return 'Evento Finalizado';
-      if (!pred.resultado_real) return 'Pendiente';
+      
+      // Check if resultado_real exists and is valid
+      if (!pred.resultado_real || pred.resultado_real === 'pending' || pred.resultado_real === '') {
+        return 'Pendiente';
+      }
+      
       if (pred.resultado_real === 'equipo1') return pred.equipo1;
       if (pred.resultado_real === 'equipo2') return pred.equipo2;
       if (pred.resultado_real === 'tie') return 'Empate';
+      
       return 'Pendiente';
     };
 
@@ -172,9 +229,13 @@ export default function ResultsScreen({ navigation }) {
       statusText = 'Evento Finalizado';
       statusColor = '#999';
     } else if (part.ronda_cerrada && part.puntos_obtenidos !== null) {
-      // UPDATED: Show correct/total instead of just points
+      // Show correct/total instead of just points
       statusText = `${stats.correctas}/${part.total_peleas} correctas`;
       statusColor = '#D52B1E';
+    } else if (part.ronda_cerrada) {
+      // Round closed but results not calculated yet
+      statusText = 'Calculando resultados...';
+      statusColor = '#FFA500';
     } else {
       // Round still open or results pending
       statusText = 'Resultados Pendientes';
@@ -213,8 +274,8 @@ export default function ResultsScreen({ navigation }) {
 
         {isExpanded && (
           <View style={styles.prediccionesContainer}>
-            {/* NEW: Stats Summary Card */}
-            {part.results_visible && part.ronda_cerrada && (
+            {/* Stats Summary Card - Only show when round is closed and results exist */}
+            {part.results_visible && part.ronda_cerrada && stats.total_predicciones > 0 && (
               <View style={styles.statsCard}>
                 <Text style={styles.statsTitle}>📊 Resumen de Resultados</Text>
                 <View style={styles.statsGrid}>
@@ -251,7 +312,7 @@ export default function ResultsScreen({ navigation }) {
             
             {!part.evento.current && (
               <View style={styles.eventEndedNotice}>
-                <Ionicons name="information-circle" size={20} color="#999" />
+                <Ionicons name="information-circle" size={20} color="#856404" />
                 <Text style={styles.eventEndedText}>
                   Este evento ha finalizado. Los resultados ya no están disponibles.
                 </Text>
@@ -279,7 +340,6 @@ export default function ResultsScreen({ navigation }) {
   };
 
   const renderEvento = (eventoData) => {
-    // Show event status badge
     const isActive = eventoData.evento.current;
     
     return (
@@ -337,13 +397,34 @@ export default function ResultsScreen({ navigation }) {
       }
     >
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Mis Resultados</Text>
-        <Text style={styles.headerSubtitle}>
-          Los resultados están visibles mientras el evento esté activo
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.headerTitle}>Mis Resultados</Text>
+            <Text style={styles.headerSubtitle}>
+              Los resultados están visibles mientras el evento esté activo
+            </Text>
+          </View>
+          <View style={styles.autoUpdateBadge}>
+            <Ionicons name="sync" size={14} color="#fff" />
+            <Text style={styles.autoUpdateText}>Auto-actualiza</Text>
+          </View>
+        </View>
+        <Text style={styles.lastUpdateText}>
+          Última actualización: {lastUpdate.toLocaleTimeString('es-GT', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            second: '2-digit'
+          })}
         </Text>
       </View>
 
       {participaciones.map(renderEvento)}
+      
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>
+          🔄 Actualizándose cada 20 segundos
+        </Text>
+      </View>
     </ScrollView>
   );
 }
@@ -383,6 +464,12 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 40,
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -392,6 +479,25 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.9)',
+  },
+  autoUpdateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 5,
+  },
+  autoUpdateText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  lastUpdateText: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontStyle: 'italic',
   },
   eventoContainer: {
     marginBottom: 15,
@@ -509,7 +615,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
   },
-  // NEW: Stats Card Styles
   statsCard: {
     backgroundColor: '#f8f8f8',
     borderRadius: 12,
@@ -545,7 +650,6 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
   },
-  // End of NEW styles
   prediccionesTitle: {
     fontSize: 14,
     fontWeight: '600',
@@ -614,5 +718,15 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: '#856404',
+  },
+  footer: {
+    alignItems: 'center',
+    padding: 20,
+    paddingBottom: 30,
+  },
+  footerText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
   },
 });

@@ -1,4 +1,4 @@
-// src/screens/LoginScreen.js - DARK WINE PREMIUM VERSION 🍷
+// src/screens/LoginScreen.js
 import React, { useState } from 'react';
 import {
   View,
@@ -11,7 +11,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  ScrollView,
+  StatusBar,
+  Image,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthContext';
 
 const { width, height } = Dimensions.get('window');
@@ -20,12 +24,11 @@ const LoginScreen = ({ navigation }) => {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [focusedInput, setFocusedInput] = useState(null);
   const { login } = useAuth();
 
   const handleLogin = async () => {
     if (!userId || !password) {
-      Alert.alert('Error', 'Por favor ingresa tu ID de usuario y contraseña');
+      Alert.alert('Campos Requeridos', 'Por favor ingresa tu usuario y contraseña');
       return;
     }
 
@@ -34,310 +37,290 @@ const LoginScreen = ({ navigation }) => {
     setLoading(false);
 
     if (!result.success) {
-      Alert.alert('Error', result.error || 'No se pudo iniciar sesión');
+      Alert.alert('Error de Inicio de Sesión', result.error || 'Credenciales inválidas. Intenta nuevamente.');
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      {/* Dark Wine Background */}
-      <View style={styles.backgroundDark}>
-        <View style={styles.wineOverlay} />
-      </View>
+    <>
+      <StatusBar barStyle="light-content" backgroundColor="#D52B1E" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.container}
+      >
+        {/* Gradient background */}
+        <LinearGradient
+          colors={['#D52B1E', '#3B0000']}
+          style={styles.gradientBackground}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+        >
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* HEADER with massive centered logo */}
+            <View style={styles.header}>
+              <View style={styles.logoWrapper}>
+                <View style={styles.whiteCircle}>
+                  <Image
+                    source={require('../../assets/logo.png')}
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+              <Text style={styles.subtitle}>Tu pasión por las peleas</Text>
+            </View>
 
-      {/* Decorative Elements - Subtle and Sexy */}
-      <View style={styles.decorativeCircle1} />
-      <View style={styles.decorativeCircle2} />
-      <View style={styles.decorativeCircle3} />
+            {/* FORM CARD */}
+            <View style={styles.formCard}>
+              <Text style={styles.formTitle}>Bienvenido de vuelta</Text>
+              <Text style={styles.formSubtitle}>Inicia sesión para continuar</Text>
 
-      <View style={styles.content}>
-        {/* Logo Section - Elegant */}
-        <View style={styles.logoContainer}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoEmoji}>🐓</Text>
-          </View>
-          <Text style={styles.title}>QUINIELA</Text>
-          <Text style={styles.titleBold}>GALLERA</Text>
-          <View style={styles.divider} />
-          <Text style={styles.tagline}>Tu pasión por las peleas</Text>
-        </View>
-
-        {/* Form Card - Dark Glass Effect */}
-        <View style={styles.formCard}>
-          <Text style={styles.formTitle}>Iniciar Sesión</Text>
-
-          <View style={styles.inputContainer}>
-            <View style={[
-              styles.inputWrapper,
-              focusedInput === 'userId' && styles.inputWrapperFocused
-            ]}>
-              <Text style={styles.inputIcon}>👤</Text>
+              <Text style={styles.inputLabel}>Usuario</Text>
               <TextInput
                 style={styles.input}
-                placeholder="ID de Usuario"
-                placeholderTextColor="#888"
+                placeholder="Ingresa tu usuario"
+                placeholderTextColor="#999"
                 value={userId}
                 onChangeText={setUserId}
-                autoCapitalize="none"
                 editable={!loading}
-                onFocus={() => setFocusedInput('userId')}
-                onBlur={() => setFocusedInput(null)}
+                autoCapitalize="none"
+                autoCorrect={false}
               />
-            </View>
 
-            <View style={[
-              styles.inputWrapper,
-              focusedInput === 'password' && styles.inputWrapperFocused
-            ]}>
-              <Text style={styles.inputIcon}>🔒</Text>
+              <Text style={styles.inputLabel}>Contraseña</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Contraseña"
-                placeholderTextColor="#888"
+                placeholder="Ingresa tu contraseña"
+                placeholderTextColor="#999"
                 value={password}
                 onChangeText={setPassword}
-                secureTextEntry
                 editable={!loading}
-                onFocus={() => setFocusedInput('password')}
-                onBlur={() => setFocusedInput(null)}
+                secureTextEntry={true}
+                autoCapitalize="none"
               />
+
+              <TouchableOpacity
+                style={styles.forgotPasswordButton}
+                onPress={() => navigation.navigate('ForgotPasswordScreen')}
+                disabled={loading}
+              >
+                <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.button, loading && styles.buttonDisabled]}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={styles.buttonText}>INICIAR SESIÓN</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>o continúa con</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <TouchableOpacity
+                style={styles.registerButton}
+                onPress={() => navigation.navigate('SignUp')}
+                disabled={loading}
+              >
+                <Text style={styles.registerText}>Crear nueva cuenta</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.infoText}>
+                Al iniciar sesión, aceptas nuestros términos y condiciones
+              </Text>
             </View>
-          </View>
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-            activeOpacity={0.8}
-          >
-            <View style={styles.buttonContent}>
-              {loading ? (
-                <ActivityIndicator color="#FFF" size="small" />
-              ) : (
-                <Text style={styles.buttonText}>ENTRAR</Text>
-              )}
+            {/* FOOTER */}
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Quiniela Gallera © 2025</Text>
+              <Text style={styles.footerSubtext}>Versión 1.0.1 • Hecho en Guatemala 🇬🇹</Text>
             </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => navigation.navigate('SignUp')}
-            disabled={loading}
-            style={styles.signupLink}
-          >
-            <Text style={styles.linkText}>
-              ¿No tienes cuenta?{' '}
-              <Text style={styles.linkTextBold}>Regístrate aquí</Text>
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Footer - Subtle */}
-        <Text style={styles.footer}>
-          © 2025 Quiniela Gallera
-        </Text>
-      </View>
-    </KeyboardAvoidingView>
+          </ScrollView>
+        </LinearGradient>
+      </KeyboardAvoidingView>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
   },
-  backgroundDark: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#0f0f0f',
-  },
-  wineOverlay: {
+  gradientBackground: {
     flex: 1,
-    backgroundColor: '#1a0505', // Very dark wine/burgundy
-    opacity: 0.9,
   },
-  decorativeCircle1: {
-    position: 'absolute',
-    top: -120,
-    right: -120,
-    width: 350,
-    height: 350,
-    borderRadius: 175,
-    backgroundColor: 'rgba(139, 0, 0, 0.08)', // Dark wine tint
-  },
-  decorativeCircle2: {
-    position: 'absolute',
-    bottom: -180,
-    left: -180,
-    width: 450,
-    height: 450,
-    borderRadius: 225,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-  },
-  decorativeCircle3: {
-    position: 'absolute',
-    top: '40%',
-    right: -100,
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    backgroundColor: 'rgba(139, 0, 0, 0.05)', // Subtle wine
-  },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 50,
+  },
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 100 : 80,
+    paddingBottom: 40,
+    alignItems: 'center',
+  },
+  logoWrapper: {
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    paddingTop: 60,
+    marginBottom: 10,
   },
-  logoContainer: {
+  whiteCircle: {
+    backgroundColor: '#FFF',
+    borderRadius: 999,
+    width: width * 0.8, // huge circular background
+    height: width * 0.8,
     alignItems: 'center',
-    marginBottom: 40,
-  },
-  logoCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: 'rgba(139, 0, 0, 0.15)', // Dark wine tint
     justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(213, 43, 30, 0.3)', // Subtle red border
+    shadowColor: '#FFF',
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    elevation: 20,
   },
-  logoEmoji: {
-    fontSize: 45,
+  logoImage: {
+    width: width * 0.7,
+    height: width * 0.7,
   },
-  title: {
-    fontSize: 34,
-    fontWeight: '300',
-    color: '#e0e0e0',
-    letterSpacing: 6,
-  },
-  titleBold: {
-    fontSize: 40,
-    fontWeight: 'bold',
+  subtitle: {
+    fontSize: 18,
     color: '#FFF',
-    letterSpacing: 3,
-    marginTop: -5,
-  },
-  divider: {
-    width: 70,
-    height: 3,
-    backgroundColor: '#D52B1E', // Brand red accent
-    marginVertical: 12,
-  },
-  tagline: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.5)',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
+    textAlign: 'center',
+    fontWeight: '500',
+    marginTop: 10,
   },
   formCard: {
-    width: '100%',
-    backgroundColor: 'rgba(20, 20, 20, 0.85)', // Dark glass effect
-    borderRadius: 24,
-    padding: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 0, 0, 0.2)', // Subtle wine border
+    backgroundColor: '#FFF',
+    borderRadius: 28,
+    padding: 30,
+    marginTop: -20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 15 },
-    shadowOpacity: 0.5,
-    shadowRadius: 25,
-    elevation: 15,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 18,
+    elevation: 10,
   },
   formTitle: {
     fontSize: 26,
-    fontWeight: 'bold',
-    color: '#FFF',
-    marginBottom: 28,
+    fontWeight: '700',
+    color: '#1a1a1a',
     textAlign: 'center',
-    letterSpacing: 1,
+    marginBottom: 4,
   },
-  inputContainer: {
-    marginBottom: 20,
+  formSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 25,
   },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(30, 30, 30, 0.8)',
-    borderRadius: 14,
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  inputWrapperFocused: {
-    borderColor: '#D52B1E', // Brand red on focus
-    backgroundColor: 'rgba(20, 20, 20, 0.95)',
-    shadowColor: '#D52B1E',
-    shadowOpacity: 0.3,
-  },
-  inputIcon: {
-    fontSize: 22,
-    marginLeft: 18,
+  inputLabel: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6,
+    marginTop: 12,
   },
   input: {
-    flex: 1,
-    height: 58,
-    paddingHorizontal: 18,
-    fontSize: 16,
-    color: '#FFF',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    fontSize: 15.5,
+    color: '#1a1a1a',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  forgotPasswordButton: {
+    alignItems: 'center',
+    marginTop: 15,
+    marginBottom: 25,
+  },
+  forgotPasswordText: {
+    color: '#D52B1E',
+    fontSize: 14,
+    fontWeight: '600',
   },
   button: {
-    borderRadius: 14,
-    overflow: 'hidden',
-    marginTop: 5,
-    marginBottom: 18,
-    backgroundColor: '#D52B1E', // Brand red
+    backgroundColor: '#D52B1E',
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
     shadowColor: '#D52B1E',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 10,
   },
   buttonDisabled: {
-    opacity: 0.4,
-    backgroundColor: '#555',
-  },
-  buttonContent: {
-    height: 58,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#999',
   },
   buttonText: {
     color: '#FFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-    letterSpacing: 2,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
-  signupLink: {
-    paddingVertical: 12,
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 26,
   },
-  linkText: {
-    fontSize: 14,
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E8E8E8',
+  },
+  dividerText: {
+    marginHorizontal: 14,
+    color: '#999',
+    fontSize: 13,
+  },
+  registerButton: {
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    paddingVertical: 17,
+    borderWidth: 2,
+    borderColor: '#D52B1E',
+    alignItems: 'center',
+  },
+  registerText: {
+    color: '#D52B1E',
+    fontSize: 15.5,
+    fontWeight: '700',
+  },
+  infoText: {
+    fontSize: 12,
     color: '#999',
     textAlign: 'center',
-  },
-  linkTextBold: {
-    color: '#D52B1E',
-    fontWeight: 'bold',
+    marginTop: 20,
+    lineHeight: 18,
   },
   footer: {
+    alignItems: 'center',
     marginTop: 35,
+    paddingBottom: 30,
+  },
+  footerText: {
+    color: '#FFF',
+    fontSize: 13,
+    marginBottom: 3,
+  },
+  footerSubtext: {
+    color: '#EEE',
     fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.3)',
-    textAlign: 'center',
-    letterSpacing: 1,
   },
 });
 

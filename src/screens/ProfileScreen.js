@@ -1,3 +1,6 @@
+// ProfileScreen.js - FIXED VERSION
+// The API returns balance data at top level, not nested in 'balance' object
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -6,7 +9,6 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
-  BackHandler,
   RefreshControl,
   Image,
   ActivityIndicator,
@@ -14,20 +16,23 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '../context/AuthContext';
 
 const API_URL = 'https://cognitech.pythonanywhere.com';
 
 const ProfileScreen = ({ navigation }) => {
+  const { logout } = useAuth();
+
   const [userId, setUserId] = useState('');
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
   const [tickets, setTickets] = useState(0);
-  
+
   const [totalMonedas, setTotalMonedas] = useState(0);
   const [monedasDisponibles, setMonedasDisponibles] = useState(0);
   const [totalPremios, setTotalPremios] = useState(0);
   const [recentPrizes, setRecentPrizes] = useState([]);
-  
+
   const [profilePicture, setProfilePicture] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -52,20 +57,14 @@ const ProfileScreen = ({ navigation }) => {
   const fetchUserData = async () => {
     try {
       const userData = await AsyncStorage.getItem('user');
-      
       if (userData) {
         const parsedUser = JSON.parse(userData);
-        
+
         setUserId(parsedUser.user_id || '');
         setNombre(parsedUser.nombre || '');
         setApellido(parsedUser.apellido || '');
         setTickets(parsedUser.event_tickets || 0);
-        
-        const savedPicture = await AsyncStorage.getItem(`profile_pic_${parsedUser.user_id}`);
-        if (savedPicture) {
-          setProfilePicture(savedPicture);
-        }
-        
+
         await fetchBalance(parsedUser.user_id);
         await fetchProfilePicture(parsedUser.user_id);
       }
@@ -74,23 +73,44 @@ const ProfileScreen = ({ navigation }) => {
     }
   };
 
+  // 🔧 FIXED: API returns data at top level, not nested in 'balance'
   const fetchBalance = async (user_id) => {
     try {
       const response = await fetch(
         `${API_URL}/api/accounts/user-balance/?user_id=${user_id}`
       );
-      
+
       if (response.ok) {
         const data = await response.json();
-        if (data && data.balance) {
-          setTotalMonedas(data.balance.total_monedas || 0);
-          setMonedasDisponibles(data.balance.monedas_disponibles || 0);
-          setTotalPremios(data.balance.total_premios_ganados || 0);
+        console.log('✅ Balance API Response:', data); // Debug log
+        
+        // API response structure:
+        // {
+        //   "success": true,
+        //   "user_id": "cochito",
+        //   "total_monedas": 10150.0,
+        //   "monedas_disponibles": 10150.0,
+        //   "total_premios_ganados": 1,
+        //   "recent_prizes": [...]
+        // }
+        
+        if (data && data.success) {
+          setTotalMonedas(data.total_monedas || 0);
+          setMonedasDisponibles(data.monedas_disponibles || 0);
+          setTotalPremios(data.total_premios_ganados || 0);
           setRecentPrizes(data.recent_prizes || []);
+          
+          console.log('✅ Balance updated:', {
+            total: data.total_monedas,
+            available: data.monedas_disponibles,
+            prizes: data.total_premios_ganados
+          });
         }
+      } else {
+        console.error('❌ Balance API failed:', response.status);
       }
     } catch (error) {
-      console.error('Fetch Balance Error:', error);
+      console.error('❌ Fetch Balance Error:', error);
     }
   };
 
@@ -99,13 +119,15 @@ const ProfileScreen = ({ navigation }) => {
       const response = await fetch(
         `${API_URL}/api/accounts/profile-picture/?user_id=${user_id}`
       );
-      
+
       if (response.ok) {
         const data = await response.json();
-        const pictureUrl = data.profile_picture_url || data.profile_picture;
-        if (pictureUrl) {
-          setProfilePicture(pictureUrl);
-          await AsyncStorage.setItem(`profile_pic_${user_id}`, pictureUrl);
+        if (data.success && data.profile_picture_url) {
+          const fullUrl = data.profile_picture_url.startsWith('http')
+            ? data.profile_picture_url
+            : `${API_URL}${data.profile_picture_url}`;
+          setProfilePicture(fullUrl);
+          await AsyncStorage.setItem(`profile_pic_${user_id}`, fullUrl);
         }
       }
     } catch (error) {
@@ -133,19 +155,21 @@ const ProfileScreen = ({ navigation }) => {
 
   const uploadProfilePicture = async (imageUri) => {
     setUploadingImage(true);
-    
+
     try {
       const formData = new FormData();
       formData.append('user_id', userId);
-      
+
       const uriParts = imageUri.split('.');
       const fileType = uriParts[uriParts.length - 1];
-      
-      formData.append('profile_picture', {
-        uri: imageUri,
+
+      const file = {
+        uri: Platform.OS === 'ios' ? imageUri.replace('file://', '') : imageUri,
         name: `profile_${userId}.${fileType}`,
         type: `image/${fileType}`,
-      });
+      };
+
+      formData.append('profile_picture', file);
 
       const response = await fetch(
         `${API_URL}/api/accounts/upload-profile-picture/`,
@@ -153,27 +177,29 @@ const ProfileScreen = ({ navigation }) => {
           method: 'POST',
           body: formData,
           headers: {
-            'Content-Type': 'multipart/form-data',
+            Accept: 'application/json',
           },
         }
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        const pictureUrl = data.profile_picture_url || data.profile_picture;
-        
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        const pictureUrl = data.profile_picture || data.profile_picture_url;
         if (pictureUrl) {
-          setProfilePicture(pictureUrl);
-          await AsyncStorage.setItem(`profile_pic_${userId}`, pictureUrl);
-          Alert.alert('Éxito', 'Foto de perfil actualizada correctamente.');
+          const fullUrl = pictureUrl.startsWith('http')
+            ? pictureUrl
+            : `${API_URL}${pictureUrl}`;
+          setProfilePicture(fullUrl);
+          await AsyncStorage.setItem(`profile_pic_${userId}`, fullUrl);
+          Alert.alert('¡Éxito!', 'Foto de perfil actualizada correctamente.');
         }
       } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.message || 'No se pudo subir la imagen.');
+        Alert.alert('Error', data.message || data.error || 'No se pudo subir la imagen.');
       }
     } catch (error) {
       console.error('Upload Error:', error);
-      Alert.alert('Error', 'No se pudo subir la imagen.');
+      Alert.alert('Error', 'No se pudo subir la imagen. Verifica tu conexión.');
     } finally {
       setUploadingImage(false);
     }
@@ -186,26 +212,26 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   const handleLogout = async () => {
-    Alert.alert(
-      'Cerrar Sesión',
-      '¿Estás seguro que deseas cerrar sesión?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Cerrar Sesión',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await AsyncStorage.clear();
-              BackHandler.exitApp();
-            } catch (error) {
-              console.error('Logout Error:', error);
-              Alert.alert('Error', 'No se pudo cerrar la sesión.');
-            }
-          },
+    Alert.alert('Cerrar Sesión', '¿Estás seguro que deseas cerrar sesión?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Cerrar Sesión',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await AsyncStorage.clear();
+            await logout();
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }],
+            });
+          } catch (error) {
+            console.error('Logout Error:', error);
+            Alert.alert('Error', 'No se pudo cerrar la sesión.');
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const InfoCard = ({ icon, label, value, color = '#D52B1E' }) => (
@@ -223,7 +249,7 @@ const ProfileScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.avatarContainer}
           onPress={pickImage}
           activeOpacity={0.8}
@@ -231,9 +257,13 @@ const ProfileScreen = ({ navigation }) => {
           {uploadingImage ? (
             <ActivityIndicator size="large" color="#FFF" />
           ) : profilePicture ? (
-            <Image 
-              source={{ uri: profilePicture }} 
+            <Image
+              source={{ uri: profilePicture }}
               style={styles.avatarImage}
+              onError={() => {
+                console.log('Image load error, resetting');
+                setProfilePicture(null);
+              }}
             />
           ) : (
             <Text style={styles.avatarEmoji}>👤</Text>
@@ -244,15 +274,18 @@ const ProfileScreen = ({ navigation }) => {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Mi Perfil</Text>
         <Text style={styles.headerSubtitle}>@{userId}</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.editPhotoButton}
           onPress={pickImage}
+          disabled={uploadingImage}
         >
-          <Text style={styles.editPhotoText}>Cambiar foto</Text>
+          <Text style={styles.editPhotoText}>
+            {uploadingImage ? 'Subiendo...' : 'Cambiar foto'}
+          </Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -287,111 +320,33 @@ const ProfileScreen = ({ navigation }) => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Información Personal</Text>
-          
-          <InfoCard 
-            icon="👤" 
-            label="Usuario" 
-            value={userId}
-            color="#D52B1E"
-          />
-          
-          <InfoCard 
-            icon="✨" 
-            label="Nombre" 
-            value={nombre}
+
+          <InfoCard icon="👤" label="Usuario" value={userId} color="#D52B1E" />
+
+          <InfoCard
+            icon="✨"
+            label="Nombre"
+            value={`${nombre} ${apellido}`}
             color="#4CAF50"
           />
-          
-          <InfoCard 
-            icon="📝" 
-            label="Apellido" 
-            value={apellido}
-            color="#2196F3"
-          />
-          
-          <InfoCard 
-            icon="🎟️" 
-            label="Tickets Disponibles" 
-            value={`${tickets} tickets`}
+
+          <InfoCard
+            icon="🎫"
+            label="Tickets Disponibles"
+            value={tickets}
             color="#FF9800"
           />
+
+          <InfoCard
+            icon="🏆"
+            label="Premios Ganados"
+            value={totalPremios}
+            color="#9C27B0"
+          />
         </View>
 
-        <View style={styles.statsCard}>
-          <Text style={styles.statsTitle}>🏆 Estadísticas</Text>
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{tickets}</Text>
-              <Text style={styles.statLabel}>Tickets</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#FFD700' }]}>
-                {totalPremios}
-              </Text>
-              <Text style={styles.statLabel}>Premios</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#4CAF50' }]}>
-                {totalMonedas > 0 ? totalMonedas.toLocaleString('es-GT', {maximumFractionDigits: 0}) : '0'}
-              </Text>
-              <Text style={styles.statLabel}>Monedas</Text>
-            </View>
-          </View>
-        </View>
-
-        {recentPrizes.length > 0 && (
-          <View style={styles.prizesCard}>
-            <Text style={styles.sectionTitle}>🏅 Últimos Premios</Text>
-            {recentPrizes.slice(0, 5).map((prize, index) => (
-              <View key={prize.id || index} style={styles.prizeRow}>
-                <View style={styles.prizeLeft}>
-                  <Text style={styles.prizeType}>{prize.tipo_display}</Text>
-                  <Text style={styles.prizeDetails}>
-                    {prize.evento} • Ronda {prize.ronda}
-                  </Text>
-                  <Text style={styles.prizeDate}>
-                    {new Date(prize.fecha).toLocaleDateString('es-GT', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric'
-                    })}
-                  </Text>
-                </View>
-                <View style={styles.prizeRight}>
-                  <Text style={styles.prizeAmount}>
-                    +{prize.monto.toLocaleString('es-GT')}
-                  </Text>
-                  <Text style={styles.prizeCurrency}>💰</Text>
-                </View>
-              </View>
-            ))}
-            
-            {recentPrizes.length > 5 && (
-              <TouchableOpacity style={styles.viewAllButton}>
-                <Text style={styles.viewAllText}>
-                  Ver todos ({recentPrizes.length} premios)
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        <View style={styles.actionsCard}>
-          <Text style={styles.actionsTitle}>Acciones</Text>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => Alert.alert('Próximamente', 'Esta función estará disponible pronto')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.actionButtonContent}>
-              <Text style={styles.actionIcon}>⚙️</Text>
-              <Text style={styles.actionButtonText}>Configuración</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Acciones</Text>
 
           <TouchableOpacity
             style={styles.actionButton}
@@ -447,64 +402,64 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 15,
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 4,
+    borderColor: '#FFF',
     overflow: 'hidden',
     position: 'relative',
   },
   avatarImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 40,
+    resizeMode: 'cover',
   },
   avatarEmoji: {
-    fontSize: 40,
+    fontSize: 50,
   },
   cameraIconContainer: {
     position: 'absolute',
     bottom: 0,
     right: 0,
     backgroundColor: '#FFF',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
+    borderRadius: 15,
+    width: 30,
+    height: 30,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#D52B1E',
   },
   cameraIcon: {
-    fontSize: 12,
+    fontSize: 14,
   },
   editPhotoButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 15,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
     marginTop: 10,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   editPhotoText: {
     color: '#FFF',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
   headerTitle: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#FFF',
     marginBottom: 5,
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 16,
     color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '500',
   },
@@ -572,11 +527,11 @@ const styles = StyleSheet.create({
     paddingLeft: 5,
   },
   infoCard: {
+    flexDirection: 'row',
     backgroundColor: '#FFF',
     borderRadius: 15,
     padding: 15,
     marginBottom: 10,
-    flexDirection: 'row',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -600,203 +555,84 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 12,
-    color: '#999',
-    marginBottom: 3,
-    fontWeight: '500',
+    color: '#666',
+    marginBottom: 4,
   },
   infoValue: {
-    fontSize: 16,
-    color: '#1a1a1a',
-    fontWeight: '600',
-  },
-  statsCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  statsTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1a1a1a',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  statItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  statValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#D52B1E',
-    marginBottom: 5,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
-  },
-  statDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: '#E0E0E0',
-  },
-  prizesCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  prizeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  prizeLeft: {
-    flex: 1,
-  },
-  prizeType: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: 4,
-  },
-  prizeDetails: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 2,
-  },
-  prizeDate: {
-    fontSize: 11,
-    color: '#999',
-  },
-  prizeRight: {
-    alignItems: 'flex-end',
-  },
-  prizeAmount: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-    marginBottom: 2,
-  },
-  prizeCurrency: {
-    fontSize: 14,
-  },
-  viewAllButton: {
-    marginTop: 15,
-    padding: 12,
-    backgroundColor: '#F8F8F8',
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  viewAllText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#D52B1E',
-  },
-  actionsCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  actionsTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 15,
   },
   actionButton: {
     flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 10,
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 15,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    marginBottom: 8,
-    backgroundColor: '#F8F8F8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   actionButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   actionIcon: {
-    fontSize: 22,
-    marginRight: 12,
+    fontSize: 24,
+    marginRight: 15,
   },
   actionButtonText: {
-    fontSize: 15,
+    fontSize: 16,
+    fontWeight: '600',
     color: '#1a1a1a',
-    fontWeight: '500',
   },
   actionArrow: {
     fontSize: 24,
     color: '#999',
-    fontWeight: '300',
   },
   divider: {
     height: 1,
     backgroundColor: '#E0E0E0',
-    marginVertical: 15,
+    marginVertical: 10,
   },
   logoutButton: {
-    backgroundColor: '#1a1a1a',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#333',
+    backgroundColor: '#FFF',
+    borderRadius: 15,
+    padding: 15,
+    borderWidth: 2,
+    borderColor: '#D52B1E',
   },
   logoutButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   logoutIcon: {
-    fontSize: 20,
+    fontSize: 24,
     marginRight: 10,
   },
   logoutButtonText: {
-    color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
+    color: '#D52B1E',
   },
   footer: {
     alignItems: 'center',
-    paddingVertical: 30,
+    marginTop: 20,
+    paddingBottom: 20,
   },
   footerText: {
     fontSize: 14,
-    color: '#666',
-    fontWeight: '600',
+    color: '#999',
     marginBottom: 5,
   },
   footerSubtext: {
     fontSize: 12,
-    color: '#999',
+    color: '#CCC',
   },
 });
 

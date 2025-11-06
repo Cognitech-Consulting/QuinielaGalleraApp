@@ -1,4 +1,4 @@
-// App.js - WITH RoundPredictionsScreen
+// App.js - FIXED WITH ForgotPasswordScreen IN AuthNavigator
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -8,14 +8,15 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import EventDetailScreen from './src/screens/EventDetailScreen';
-import RoundPredictionsScreen from './src/screens/RoundPredictionsScreen'; // ⭐ NEW
+import RoundPredictionsScreen from './src/screens/RoundPredictionsScreen';
 import PredictionsScreen from './src/screens/PredictionsScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 import PrizeDashboardScreen from './src/screens/PrizeDashboardScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+
 const Stack = createNativeStackNavigator();
 
 function AuthNavigator() {
@@ -23,6 +24,7 @@ function AuthNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
+      <Stack.Screen name="ForgotPasswordScreen" component={ForgotPasswordScreen} />
     </Stack.Navigator>
   );
 }
@@ -48,7 +50,6 @@ function AppNavigator() {
         options={{ title: 'Detalles del Evento', headerShown: false }}
       />
       
-      {/* ⭐ NEW: Round-based predictions screen */}
       <Stack.Screen 
         name="RoundPredictions" 
         component={RoundPredictionsScreen}
@@ -60,22 +61,24 @@ function AppNavigator() {
         component={PredictionsScreen}
         options={{ title: 'Hacer Predicciones' }}
       />
+      
       <Stack.Screen 
         name="Results" 
         component={ResultsScreen}
         options={{ title: 'Mis Resultados' }}
       />
+      
       <Stack.Screen 
         name="PrizeDashboard" 
         component={PrizeDashboardScreen}
         options={{ title: 'Premios' }}
       />
+      
       <Stack.Screen 
         name="Profile" 
         component={ProfileScreen}
         options={{ title: 'Mi Perfil' }}
       />
-      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </Stack.Navigator>
   );
 }

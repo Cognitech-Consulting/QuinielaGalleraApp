@@ -1,4 +1,4 @@
-// src/screens/ForgotPasswordScreen.js
+// src/screens/ForgotPasswordScreen.js - FIXED VERSION WITH WINE COLORS & KEYBOARD FIX
 import React, { useState } from 'react';
 import {
   View,
@@ -16,22 +16,16 @@ import {
 const API_URL = 'https://cognitech.pythonanywhere.com';
 
 const ForgotPasswordScreen = ({ navigation }) => {
-  const [step, setStep] = useState(1); // 1: Request token, 2: Enter token, 3: New password
+  const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null);
 
-  // Step 1: Request reset
   const [userId, setUserId] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-
-  // Step 2: Token
   const [resetToken, setResetToken] = useState('');
-
-  // Step 3: New password
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Format phone number as user types
   const formatPhoneNumber = (text) => {
     const cleaned = text.replace(/\D/g, '');
     let numbers = cleaned;
@@ -58,14 +52,12 @@ const ForgotPasswordScreen = ({ navigation }) => {
     setPhoneNumber(formatted);
   };
 
-  // Step 1: Request password reset
   const handleRequestReset = async () => {
     if (!userId || !phoneNumber) {
       Alert.alert('Error', 'Por favor ingresa tu ID de usuario y número de teléfono');
       return;
     }
 
-    // Validate phone format
     const cleanPhone = phoneNumber.replace(/\D/g, '');
     let numbers = cleanPhone;
     if (numbers.startsWith('502')) {
@@ -101,7 +93,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
             {
               text: 'OK',
               onPress: () => {
-                setResetToken(data.token); // Auto-fill for development
+                setResetToken(data.token);
                 setStep(2);
               },
             },
@@ -118,7 +110,6 @@ const ForgotPasswordScreen = ({ navigation }) => {
     }
   };
 
-  // Step 2: Verify token (optional, can skip directly to step 3)
   const handleVerifyToken = () => {
     if (!resetToken || resetToken.trim().length < 10) {
       Alert.alert('Error', 'Por favor ingresa un código válido');
@@ -127,7 +118,6 @@ const ForgotPasswordScreen = ({ navigation }) => {
     setStep(3);
   };
 
-  // Step 3: Reset password
   const handleResetPassword = async () => {
     if (!newPassword || !confirmPassword) {
       Alert.alert('Error', 'Por favor completa todos los campos');
@@ -208,6 +198,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
+      keyboardVerticalOffset={0}
     >
       <View style={styles.background}>
         <View style={styles.backgroundOverlay} />
@@ -228,6 +219,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.formCard}>
           {/* Progress Indicator */}
@@ -408,19 +400,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 220,
-    backgroundColor: '#D52B1E',
+    backgroundColor: '#722F37', // Wine color
   },
   backgroundOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 30,
+    paddingBottom: 20,
     paddingHorizontal: 20,
   },
   backButton: {
-    marginBottom: 20,
+    marginBottom: 15,
   },
   backButtonText: {
     color: '#FFF',
@@ -442,7 +434,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.9)',
   },
   scrollView: {
     flex: 1,
@@ -454,12 +446,13 @@ const styles = StyleSheet.create({
   formCard: {
     backgroundColor: '#FFF',
     borderRadius: 20,
-    padding: 20,
+    padding: 25,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 8,
+    marginBottom: 20,
   },
   progressContainer: {
     flexDirection: 'row',
@@ -476,7 +469,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   progressStepActive: {
-    backgroundColor: '#D52B1E',
+    backgroundColor: '#722F37', // Wine color
   },
   progressText: {
     fontSize: 16,
@@ -487,106 +480,71 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   progressLine: {
-    width: 50,
-    height: 3,
+    width: 40,
+    height: 2,
     backgroundColor: '#E0E0E0',
-    marginHorizontal: 5,
   },
   progressLineActive: {
-    backgroundColor: '#D52B1E',
+    backgroundColor: '#722F37', // Wine color
   },
   stepTitle: {
     fontSize: 22,
     fontWeight: 'bold',
     color: '#1a1a1a',
     marginBottom: 10,
-    textAlign: 'center',
   },
   stepDescription: {
     fontSize: 14,
     color: '#666',
     marginBottom: 25,
-    textAlign: 'center',
     lineHeight: 20,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#F5F5F5',
     borderRadius: 12,
-    marginBottom: 12,
+    paddingHorizontal: 15,
+    marginBottom: 15,
     borderWidth: 2,
     borderColor: 'transparent',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
   },
   inputWrapperFocused: {
-    borderColor: '#D52B1E',
+    borderColor: '#722F37', // Wine color
     backgroundColor: '#FFF',
-    shadowOpacity: 0.1,
   },
   inputIcon: {
     fontSize: 20,
-    marginLeft: 15,
+    marginRight: 10,
   },
   input: {
     flex: 1,
-    height: 50,
-    paddingHorizontal: 15,
-    fontSize: 15,
+    paddingVertical: 15,
+    fontSize: 16,
     color: '#1a1a1a',
   },
   helperText: {
     fontSize: 12,
-    color: '#666',
-    marginLeft: 15,
-    marginTop: -8,
-    marginBottom: 15,
-  },
-  passwordStrength: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-    marginLeft: 15,
-  },
-  strengthLabel: {
-    fontSize: 13,
-    color: '#666',
-  },
-  strengthText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  strengthWeak: {
-    color: '#F44336',
-  },
-  strengthMedium: {
-    color: '#FF9800',
-  },
-  strengthStrong: {
-    color: '#4CAF50',
+    color: '#999',
+    marginBottom: 20,
+    marginTop: -10,
   },
   button: {
+    backgroundColor: '#722F37', // Wine color
     borderRadius: 12,
-    overflow: 'hidden',
+    paddingVertical: 16,
     marginTop: 10,
-    marginBottom: 15,
-    backgroundColor: '#D52B1E',
-    shadowColor: '#D52B1E',
+    shadowColor: '#722F37',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 6,
+    elevation: 8,
   },
   buttonDisabled: {
-    opacity: 0.5,
-    backgroundColor: '#999',
+    backgroundColor: '#CCC',
   },
   buttonContent: {
-    height: 55,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -597,26 +555,50 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   linkButton: {
-    paddingVertical: 10,
+    marginTop: 15,
+    alignItems: 'center',
   },
   linkText: {
+    color: '#722F37', // Wine color
     fontSize: 14,
-    color: '#D52B1E',
-    textAlign: 'center',
     fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  passwordStrength: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    marginTop: -5,
+  },
+  strengthLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+  strengthText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  strengthWeak: {
+    color: '#E74C3C',
+  },
+  strengthMedium: {
+    color: '#F39C12',
+  },
+  strengthStrong: {
+    color: '#27AE60',
   },
   footer: {
-    marginTop: 20,
     alignItems: 'center',
+    marginTop: 10,
   },
   footerText: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 5,
+    marginBottom: 8,
   },
   footerLink: {
-    fontSize: 15,
-    color: '#D52B1E',
+    fontSize: 16,
+    color: '#722F37', // Wine color
     fontWeight: 'bold',
   },
 });
