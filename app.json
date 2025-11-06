@@ -4,11 +4,10 @@
     "slug": "quinielagallera",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logo.png",
+    "icon": "./assets/logo.jpg",
     "userInterfaceStyle": "automatic",
-    "sdkVersion": "53.0.0",
     "splash": {
-      "image": "./assets/logo.png",
+      "image": "./assets/logo.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#D52B1E"
     },
@@ -17,20 +16,21 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.quinielagallera.app"
+      "bundleIdentifier": "com.quinielagallera.app",
+      "newArchEnabled": false
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#D52B1E"
       },
-      "package": "com.quinielagallera.app"
+      "package": "com.quinielagallera.app",
+      "versionCode": 1,
+      "newArchEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      "expo-font"
-    ]
+    "newArchEnabled": false
   }
 }
